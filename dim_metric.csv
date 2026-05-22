@@ -1,0 +1,5 @@
+notes,metric_id,format_type,category,Metric Label,var_base,Selected Metric Title,unit
+Female population age 15-17,female_pop_age_15_17,number,Demographics,Female population (age 15-17),B01001_009,Female population (age 15-17) by county,people
+Poverty count for women (Black),female_poverty_count,number,Economic Security,Women living in poverty,B17001B_002,Women living in poverty by county,people
+Total female population,female_pop_total,number,Demographics,Female population (total),B01001_001,Female population (total) by county,people
+Women in labor force,female_labor_force_count,number,Economic Security,Women in labor force,B12006_005,Women in labor force by county,people
