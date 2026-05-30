@@ -1,6 +1,6 @@
 import pandas as pd
 
-NIBRS = "/Users/adalimepowell/Desktop/WISWOM/WI-2024"
+NIBRS = "path"
 
 # Step 1 - load tables
 victim = pd.read_csv(f"{NIBRS}/NIBRS_VICTIM.csv", usecols=['victim_id', 'incident_id', 'sex_code', 'age_num', 'victim_type_id'])
