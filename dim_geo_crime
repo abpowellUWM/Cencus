@@ -1,0 +1,11 @@
+let
+  Source = Csv.Document(Web.Contents("https://panthers-my.sharepoint.com/personal/abpowell_uwm_edu/Documents/Apps/Microsoft Power Query/Uploaded Files/fact_crime_wi_county 1.csv"), [Delimiter = ",", Columns = 4, QuoteStyle = QuoteStyle.None]),
+  #"Promoted headers" = Table.PromoteHeaders(Source, [PromoteAllScalars = true]),
+  #"Changed column type" = Table.TransformColumnTypes(#"Promoted headers", {{"county", type text}, {"var_base", type text}, {"estimate", Int64.Type}, {"geography_level", type text}}),
+  #"Added custom" = Table.AddColumn(#"Changed column type", "county_name", each Text.Proper(Text.Trim(Text.BeforeDelimiter([county], ","))) & " County"),
+  #"Fixed Fond du Lac" = Table.ReplaceValue(#"Added custom", "Fond Du Lac County", "Fond du Lac County", Replacer.ReplaceText, {"county_name"}),
+  #"Added county_2" = Table.AddColumn(#"Fixed Fond du Lac", "county_2", each 
+    let second = Text.Trim(Text.AfterDelimiter([county], ","))
+    in if second = "" then null else Text.Proper(second) & " County")
+in
+  #"Added county_2"
