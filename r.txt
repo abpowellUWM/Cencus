@@ -1,0 +1,77 @@
+# Status of Wisconsin Women Dashboard
+
+A data pipeline and Power BI dashboard built for the **Wisconsin Women's Council** that visualizes county-level data across all 72 Wisconsin counties. Data is sourced primarily from the U.S. Census Bureau's American Community Survey (ACS), with supplemental data from the Wisconsin WISH Query System and the FBI's National Incident-Based Reporting System (NIBRS).
+
+---
+
+## Repository Structure
+
+```
+status-of-women-dashboard/
+├── raw_data/           # Unmodified source data as downloaded from APIs and external sources
+├── clean_data/         # Processed, analysis-ready data files used to populate the dashboard
+├── python_scripts/     # ETL scripts for pulling, cleaning, and loading data
+└── power_bi/           # Power BI project files (.pbip), versioned across development iterations
+```
+
+---
+
+## Folder Details
+
+### `raw_data/`
+Unmodified source files pulled directly from external sources. Includes ACS API responses, WISH exports, and NIBRS crime data downloads. Nothing in this folder should be edited manually.
+
+### `clean_data/`
+Processed output from the Python ETL pipeline. Files here are structured around a star schema with a central `fact_acs_wi_county` table and supporting dimension tables (`dim_geography`, `dim_metric`, `dim_sex`, `dim_race`, `dim_age_group`, `dim_education`, `dim_marital_status`). These are the files the Power BI model reads from.
+
+### `python_scripts/`
+Scripts that handle the full ETL process:
+
+- **`pull_acs.py`** — pulls ACS 2024 5-year estimates from the Census API for all 72 Wisconsin counties
+- **`build_dim_tables.py`** — constructs dimension tables from cleaned ACS data
+- Additional scripts for NIBRS crime data ingestion and WISH health data integration
+
+### `power_bi/`
+Versioned Power BI project files (`.pbip` format). Organized by development iteration so earlier versions can be referenced or restored. The dashboard currently includes the following pages:
+
+- **Home** — landing page with project overview and navigation
+- **Demographics** — population composition by county
+- **Economic Security** — income, poverty, and employment indicators
+- **Labor** — labor force participation and industry breakdown
+- **Occupations** — occupational distribution with gender comparison
+- **Safety** — crime and violence indicators sourced from NIBRS
+- **Geography** — county-level choropleth maps with a three-level drill-down
+- **Trends** — longitudinal comparisons where ACS data supports it
+
+---
+
+## Data Sources
+
+| Source | Data | Access |
+|---|---|---|
+| U.S. Census Bureau ACS | Demographics, labor, education, income | Census API |
+| Wisconsin WISH Query System | Health and maternal indicators | Manual export |
+| FBI NIBRS (Crime Data Explorer) | Violent crime and safety metrics | Manual export |
+
+---
+
+## Setup
+
+Python dependencies can be installed via:
+
+```bash
+pip install -r requirements.txt
+```
+
+To run the full pipeline:
+
+```bash
+python python_scripts/pull_acs.py
+python python_scripts/build_dim_tables.py
+```
+
+---
+
+## Project Context
+
+This dashboard is developed in collaboration with the Wisconsin Women's Council as part of an ongoing effort to provide accessible, data-driven insights into the status of women across Wisconsin. County-level granularity allows for regional comparisons and targeted policy analysis.
