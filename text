@@ -1,0 +1,697 @@
+# Safety Page — DAX Reference
+Wisconsin Women's Council · Status of Women Dashboard · 2024 NIBRS Data
+
+---
+
+## Table Names Quick Reference
+
+| Power BI table name | Source |
+|---|---|
+| `fact_crime_wi_county` | `fact_crime_agg.csv` (output of `crime_analysis.py`) |
+| `fact_acs_wi_county` | ACS pipeline (existing) |
+| `dim_demographic_slicer` | Calculated table — §1 |
+| `dim_demo_axis` | Calculated table — §2 |
+| `dim_offense_slicer` | Calculated table — §3 |
+| `dim_relationship_slicer` | Calculated table — §4 |
+| `dim_county` | Calculated table — §9 (bridge to ACS geo_id) |
+
+Columns confirmed in `fact_crime_wi_county`:
+`county`, `county_2`, `metric`, `vic_sex`, `vic_race`, `vic_age`,
+`off_sex`, `off_race`, `off_age`, `relationship`, `offense_category`,
+`estimate`, `county_fips`, `county_2_fips`
+
+---
+
+## 1. `dim_demographic_slicer`
+
+Controls which demographic attribute the breakdown visual uses.
+Paste as **Modeling → New Table**.
+
+```dax
+dim_demographic_slicer =
+DATATABLE(
+    "DemoKey",   STRING,
+    "DemoLabel", STRING,
+    "SortOrder", INTEGER,
+    {
+        { "vic_sex",  "Victim Sex",          1 },
+        { "vic_race", "Victim Race",         2 },
+        { "vic_age",  "Victim Age Group",    3 },
+        { "off_sex",  "Offender Sex",        4 },
+        { "off_race", "Offender Race",       5 },
+        { "off_age",  "Offender Age Group",  6 }
+    }
+)
+```
+
+Slicer config: field = `DemoLabel`, sort by `SortOrder`, **single-select**.
+
+---
+
+## 2. `dim_demo_axis`
+
+Holds every demographic value tagged by which attribute it belongs to.
+The demographic breakdown chart puts `DemoLabel` on its axis. `[Crime_Count]`
+returns BLANK() for rows whose `DemoKey` doesn't match the slicer selection,
+so Power BI hides them automatically — no visual-level filter needed.
+
+```dax
+dim_demo_axis =
+UNION(
+    DATATABLE("DemoKey", STRING, "DemoValue", STRING,
+              "DemoLabel", STRING, "SortOrder", INTEGER,
+        {
+            { "vic_sex", "F", "Female",   1 },
+            { "vic_sex", "M", "Male",     2 },
+            { "vic_sex", "U", "Unknown",  3 }
+        }
+    ),
+    DATATABLE("DemoKey", STRING, "DemoValue", STRING,
+              "DemoLabel", STRING, "SortOrder", INTEGER,
+        {
+            { "vic_race", "White",                                     "White",                                     1 },
+            { "vic_race", "Black or African American",                 "Black or African American",                 2 },
+            { "vic_race", "American Indian or Alaska Native",          "American Indian or Alaska Native",          3 },
+            { "vic_race", "Asian",                                     "Asian",                                     4 },
+            { "vic_race", "Native Hawaiian or Other Pacific Islander", "Native Hawaiian or Other Pacific Islander", 5 },
+            { "vic_race", "Unknown",                                   "Unknown",                                   6 }
+        }
+    ),
+    DATATABLE("DemoKey", STRING, "DemoValue", STRING,
+              "DemoLabel", STRING, "SortOrder", INTEGER,
+        {
+            { "vic_age", "Under 18", "Under 18", 1 },
+            { "vic_age", "18-24",    "18–24",    2 },
+            { "vic_age", "25-34",    "25–34",    3 },
+            { "vic_age", "35-44",    "35–44",    4 },
+            { "vic_age", "45-54",    "45–54",    5 },
+            { "vic_age", "55-64",    "55–64",    6 },
+            { "vic_age", "65+",      "65+",      7 }
+        }
+    ),
+    DATATABLE("DemoKey", STRING, "DemoValue", STRING,
+              "DemoLabel", STRING, "SortOrder", INTEGER,
+        {
+            { "off_sex", "F", "Female",  1 },
+            { "off_sex", "M", "Male",    2 },
+            { "off_sex", "U", "Unknown", 3 }
+        }
+    ),
+    DATATABLE("DemoKey", STRING, "DemoValue", STRING,
+              "DemoLabel", STRING, "SortOrder", INTEGER,
+        {
+            { "off_race", "White",                                     "White",                                     1 },
+            { "off_race", "Black or African American",                 "Black or African American",                 2 },
+            { "off_race", "American Indian or Alaska Native",          "American Indian or Alaska Native",          3 },
+            { "off_race", "Asian",                                     "Asian",                                     4 },
+            { "off_race", "Native Hawaiian or Other Pacific Islander", "Native Hawaiian or Other Pacific Islander", 5 },
+            { "off_race", "Unknown",                                   "Unknown",                                   6 }
+        }
+    ),
+    DATATABLE("DemoKey", STRING, "DemoValue", STRING,
+              "DemoLabel", STRING, "SortOrder", INTEGER,
+        {
+            { "off_age", "Under 18", "Under 18", 1 },
+            { "off_age", "18-24",    "18–24",    2 },
+            { "off_age", "25-34",    "25–34",    3 },
+            { "off_age", "35-44",    "35–44",    4 },
+            { "off_age", "45-54",    "45–54",    5 },
+            { "off_age", "55-64",    "55–64",    6 },
+            { "off_age", "65+",      "65+",      7 }
+        }
+    )
+)
+```
+
+No relationship to any other table. Sort `DemoLabel` by `SortOrder`.
+
+---
+
+## 3. `dim_offense_slicer`
+
+One row per distinct metric value from `fact_crime_wi_county[metric]`, plus an
+"All Offense Types" catch-all. `OffenseKey = "ALL"` means no metric filter.
+
+```dax
+dim_offense_slicer =
+DATATABLE(
+    "OffenseKey",      STRING,
+    "OffenseLabel",    STRING,
+    "OffenseCategory", STRING,
+    "SortOrder",       INTEGER,
+    {
+        { "ALL",                                                "All Offense Types",                           "(All)",          0  },
+        { "victim_count",                                       "All DV Victims (Total)",                      "(All)",          1  },
+        { "offender_count",                                     "All DV Offenders (Total)",                    "(All)",          2  },
+        { "victim_murder_and_nonnegligent_manslaughter",        "Murder & Nonnegligent Manslaughter",          "Homicide",       10 },
+        { "victim_negligent_manslaughter",                      "Negligent Manslaughter",                      "Homicide",       11 },
+        { "victim_justifiable_homicide",                        "Justifiable Homicide",                        "Homicide",       12 },
+        { "victim_rape",                                        "Rape",                                        "Sex Offenses",   20 },
+        { "victim_sodomy",                                      "Sodomy",                                      "Sex Offenses",   21 },
+        { "victim_sexual_assault_with_an_object",               "Sexual Assault With an Object",               "Sex Offenses",   22 },
+        { "victim_criminal_sexual_contact",                     "Criminal Sexual Contact / Fondling",          "Sex Offenses",   23 },
+        { "victim_incest",                                      "Incest",                                      "Sex Offenses",   24 },
+        { "victim_aggravated_assault",                          "Aggravated Assault",                          "Assault",        30 },
+        { "victim_simple_assault",                              "Simple Assault",                              "Assault",        31 },
+        { "victim_intimidation",                                "Intimidation",                                "Assault",        32 },
+        { "victim_kidnapping_abduction",                        "Kidnapping / Abduction",                      "Kidnapping",     40 },
+        { "victim_robbery",                                     "Robbery",                                     "Property",       50 },
+        { "victim_extortion_blackmail",                         "Extortion / Blackmail",                       "Property",       51 },
+        { "victim_burglary_breaking_entering",                  "Burglary / Breaking & Entering",              "Property",       52 },
+        { "victim_motor_vehicle_theft",                         "Motor Vehicle Theft",                         "Property",       53 },
+        { "victim_counterfeiting_forgery",                      "Counterfeiting / Forgery",                    "Property",       54 },
+        { "victim_embezzlement",                                "Embezzlement",                                "Property",       55 },
+        { "victim_destruction_damage_vandalism_of_property",    "Destruction / Damage / Vandalism",            "Property",       56 },
+        { "victim_pocket_picking",                              "Pocket-Picking",                              "Larceny/Theft",  60 },
+        { "victim_purse_snatching",                             "Purse-Snatching",                             "Larceny/Theft",  61 },
+        { "victim_shoplifting",                                 "Shoplifting",                                 "Larceny/Theft",  62 },
+        { "victim_theft_from_building",                         "Theft From Building",                         "Larceny/Theft",  63 },
+        { "victim_theft_from_coin_operated_machine_or_device",  "Theft From Coin-Operated Machine",            "Larceny/Theft",  64 },
+        { "victim_theft_from_motor_vehicle",                    "Theft From Motor Vehicle",                    "Larceny/Theft",  65 },
+        { "victim_theft_of_motor_vehicle_parts_or_accessories", "Theft of Motor Vehicle Parts or Accessories", "Larceny/Theft",  66 },
+        { "victim_all_other_larceny",                           "All Other Larceny",                           "Larceny/Theft",  67 }
+    }
+)
+```
+
+Slicer config: field = `OffenseLabel`, sort by `SortOrder`, **single-select**.
+Optional: group visually in the slicer by `OffenseCategory` using a hierarchy.
+
+---
+
+## 4. `dim_relationship_slicer`
+
+Maps the three filter options to sets of `relationship` values in the fact table.
+
+```dax
+dim_relationship_slicer =
+DATATABLE(
+    "RelKey",    STRING,
+    "RelLabel",  STRING,
+    "SortOrder", INTEGER,
+    {
+        { "ALL",              "All Relationships",  1 },
+        { "INTIMATE_PARTNER", "Intimate Partner",   2 },
+        { "FAMILY",           "Family",             3 }
+    }
+)
+```
+
+Slicer config: field = `RelLabel`, sort by `SortOrder`, **single-select**.
+
+Relationship values mapped internally in every measure (see §5):
+
+| RelKey | Includes these `relationship` values |
+|---|---|
+| `INTIMATE_PARTNER` | Victim Was Spouse · Victim Was Common-Law Spouse · Victim was Ex-Spouse · Victim Was Ex-Relationship (Ex-Boyfriend/Girlfriend) · Victim Was Boyfriend/Girlfriend |
+| `FAMILY` | Victim Was Child · Victim Was Child of Boyfriend or Girlfriend · Victim Was Parent · Victim Was Stepchild · Victim Was Stepparent · Victim was Foster Parent |
+| `ALL` | No relationship filter applied |
+
+Note the case inconsistency in source data: "Victim **was** Ex-Spouse" and "Victim **was** Foster Parent" use lowercase "was." Both forms are included in the IN lists below.
+
+---
+
+## 5. Core Measures
+
+Add all measures to a dedicated measure table (create an empty table called `_Measures`).
+
+### [Crime_Count]
+
+The primary measure. Works in two contexts:
+
+- **With `dim_demo_axis` on the axis** (bar/column chart): returns the count for
+  that specific demographic value, hides bars for the wrong demographic via BLANK().
+- **Without `dim_demo_axis` context** (cards, county tables): returns the total
+  respecting only the offense and relationship slicers.
+
+```dax
+Crime_Count =
+VAR _DemoKey     = SELECTEDVALUE(dim_demographic_slicer[DemoKey], "vic_sex")
+VAR _AxisValue   = SELECTEDVALUE(dim_demo_axis[DemoValue])
+VAR _AxisDemoKey = SELECTEDVALUE(dim_demo_axis[DemoKey])
+VAR _OffenseKey  = SELECTEDVALUE(dim_offense_slicer[OffenseKey], "ALL")
+VAR _RelKey      = SELECTEDVALUE(dim_relationship_slicer[RelKey], "ALL")
+VAR _HasAxis     = NOT ISBLANK(_AxisValue)
+
+-- Intimate partner and family relationship sets
+VAR _IPRel = {
+    "Victim Was Spouse",
+    "Victim Was Common-Law Spouse",
+    "Victim was Ex-Spouse",
+    "Victim Was Ex-Relationship (Ex-Boyfriend/Girlfriend)",
+    "Victim Was Boyfriend/Girlfriend"
+}
+VAR _FamRel = {
+    "Victim Was Child",
+    "Victim Was Child of Boyfriend or Girlfriend",
+    "Victim Was Parent",
+    "Victim Was Stepchild",
+    "Victim Was Stepparent",
+    "Victim was Foster Parent"
+}
+
+-- When we're in a dim_demo_axis row but it belongs to the wrong demographic, hide it
+VAR _WrongAxis = _HasAxis && _AxisDemoKey <> _DemoKey
+
+RETURN
+IF(
+    _WrongAxis,
+    BLANK(),
+    -- Dispatch: filtered by axis value when present, total when not
+    SWITCH(
+        TRUE(),
+
+        -- Victim Sex
+        _HasAxis && _DemoKey = "vic_sex",
+            SWITCH(
+                _RelKey,
+                "ALL",
+                    CALCULATE(SUM(fact_crime_wi_county[estimate]),
+                        fact_crime_wi_county[vic_sex] = _AxisValue,
+                        IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+                    ),
+                "INTIMATE_PARTNER",
+                    CALCULATE(SUM(fact_crime_wi_county[estimate]),
+                        fact_crime_wi_county[vic_sex] = _AxisValue,
+                        fact_crime_wi_county[relationship] IN _IPRel,
+                        IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+                    ),
+                "FAMILY",
+                    CALCULATE(SUM(fact_crime_wi_county[estimate]),
+                        fact_crime_wi_county[vic_sex] = _AxisValue,
+                        fact_crime_wi_county[relationship] IN _FamRel,
+                        IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+                    )
+            ),
+
+        -- Victim Race
+        _HasAxis && _DemoKey = "vic_race",
+            SWITCH(
+                _RelKey,
+                "ALL",
+                    CALCULATE(SUM(fact_crime_wi_county[estimate]),
+                        fact_crime_wi_county[vic_race] = _AxisValue,
+                        IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+                    ),
+                "INTIMATE_PARTNER",
+                    CALCULATE(SUM(fact_crime_wi_county[estimate]),
+                        fact_crime_wi_county[vic_race] = _AxisValue,
+                        fact_crime_wi_county[relationship] IN _IPRel,
+                        IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+                    ),
+                "FAMILY",
+                    CALCULATE(SUM(fact_crime_wi_county[estimate]),
+                        fact_crime_wi_county[vic_race] = _AxisValue,
+                        fact_crime_wi_county[relationship] IN _FamRel,
+                        IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+                    )
+            ),
+
+        -- Victim Age
+        _HasAxis && _DemoKey = "vic_age",
+            SWITCH(
+                _RelKey,
+                "ALL",
+                    CALCULATE(SUM(fact_crime_wi_county[estimate]),
+                        fact_crime_wi_county[vic_age] = _AxisValue,
+                        IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+                    ),
+                "INTIMATE_PARTNER",
+                    CALCULATE(SUM(fact_crime_wi_county[estimate]),
+                        fact_crime_wi_county[vic_age] = _AxisValue,
+                        fact_crime_wi_county[relationship] IN _IPRel,
+                        IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+                    ),
+                "FAMILY",
+                    CALCULATE(SUM(fact_crime_wi_county[estimate]),
+                        fact_crime_wi_county[vic_age] = _AxisValue,
+                        fact_crime_wi_county[relationship] IN _FamRel,
+                        IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+                    )
+            ),
+
+        -- Offender Sex
+        _HasAxis && _DemoKey = "off_sex",
+            SWITCH(
+                _RelKey,
+                "ALL",
+                    CALCULATE(SUM(fact_crime_wi_county[estimate]),
+                        fact_crime_wi_county[off_sex] = _AxisValue,
+                        IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+                    ),
+                "INTIMATE_PARTNER",
+                    CALCULATE(SUM(fact_crime_wi_county[estimate]),
+                        fact_crime_wi_county[off_sex] = _AxisValue,
+                        fact_crime_wi_county[relationship] IN _IPRel,
+                        IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+                    ),
+                "FAMILY",
+                    CALCULATE(SUM(fact_crime_wi_county[estimate]),
+                        fact_crime_wi_county[off_sex] = _AxisValue,
+                        fact_crime_wi_county[relationship] IN _FamRel,
+                        IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+                    )
+            ),
+
+        -- Offender Race
+        _HasAxis && _DemoKey = "off_race",
+            SWITCH(
+                _RelKey,
+                "ALL",
+                    CALCULATE(SUM(fact_crime_wi_county[estimate]),
+                        fact_crime_wi_county[off_race] = _AxisValue,
+                        IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+                    ),
+                "INTIMATE_PARTNER",
+                    CALCULATE(SUM(fact_crime_wi_county[estimate]),
+                        fact_crime_wi_county[off_race] = _AxisValue,
+                        fact_crime_wi_county[relationship] IN _IPRel,
+                        IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+                    ),
+                "FAMILY",
+                    CALCULATE(SUM(fact_crime_wi_county[estimate]),
+                        fact_crime_wi_county[off_race] = _AxisValue,
+                        fact_crime_wi_county[relationship] IN _FamRel,
+                        IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+                    )
+            ),
+
+        -- Offender Age
+        _HasAxis && _DemoKey = "off_age",
+            SWITCH(
+                _RelKey,
+                "ALL",
+                    CALCULATE(SUM(fact_crime_wi_county[estimate]),
+                        fact_crime_wi_county[off_age] = _AxisValue,
+                        IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+                    ),
+                "INTIMATE_PARTNER",
+                    CALCULATE(SUM(fact_crime_wi_county[estimate]),
+                        fact_crime_wi_county[off_age] = _AxisValue,
+                        fact_crime_wi_county[relationship] IN _IPRel,
+                        IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+                    ),
+                "FAMILY",
+                    CALCULATE(SUM(fact_crime_wi_county[estimate]),
+                        fact_crime_wi_county[off_age] = _AxisValue,
+                        fact_crime_wi_county[relationship] IN _FamRel,
+                        IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+                    )
+            ),
+
+        -- No axis context: return total (used in cards, county-level table)
+        SWITCH(
+            _RelKey,
+            "ALL",
+                CALCULATE(SUM(fact_crime_wi_county[estimate]),
+                    IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+                ),
+            "INTIMATE_PARTNER",
+                CALCULATE(SUM(fact_crime_wi_county[estimate]),
+                    fact_crime_wi_county[relationship] IN _IPRel,
+                    IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+                ),
+            "FAMILY",
+                CALCULATE(SUM(fact_crime_wi_county[estimate]),
+                    fact_crime_wi_county[relationship] IN _FamRel,
+                    IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+                )
+        )
+    )
+)
+```
+
+---
+
+### [Selected_Crime_Label]
+
+Dynamic title / card. Describes the current slicer state in plain English.
+
+```dax
+Selected_Crime_Label =
+VAR _DemoLabel    = SELECTEDVALUE(dim_demographic_slicer[DemoLabel], "Victim Sex")
+VAR _OffenseLabel = SELECTEDVALUE(dim_offense_slicer[OffenseLabel],  "All Offense Types")
+VAR _RelLabel     = SELECTEDVALUE(dim_relationship_slicer[RelLabel], "All Relationships")
+RETURN
+    "DV Incidents by " & _DemoLabel
+    & "  ·  " & _OffenseLabel
+    & "  ·  " & _RelLabel
+```
+
+Place on a Card or Text Box set to "Call out value."
+
+---
+
+## 6. Statewide Total Card
+
+Ignores any county filter context. Responds to offense and relationship slicers.
+
+```dax
+Crime_Count_Statewide =
+VAR _OffenseKey = SELECTEDVALUE(dim_offense_slicer[OffenseKey], "ALL")
+VAR _RelKey     = SELECTEDVALUE(dim_relationship_slicer[RelKey], "ALL")
+VAR _IPRel = {
+    "Victim Was Spouse", "Victim Was Common-Law Spouse",
+    "Victim was Ex-Spouse",
+    "Victim Was Ex-Relationship (Ex-Boyfriend/Girlfriend)",
+    "Victim Was Boyfriend/Girlfriend"
+}
+VAR _FamRel = {
+    "Victim Was Child", "Victim Was Child of Boyfriend or Girlfriend",
+    "Victim Was Parent", "Victim Was Stepchild",
+    "Victim Was Stepparent", "Victim was Foster Parent"
+}
+RETURN
+SWITCH(
+    _RelKey,
+    "ALL",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            REMOVEFILTERS(fact_crime_wi_county[county]),
+            IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+        ),
+    "INTIMATE_PARTNER",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            REMOVEFILTERS(fact_crime_wi_county[county]),
+            fact_crime_wi_county[relationship] IN _IPRel,
+            IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+        ),
+    "FAMILY",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            REMOVEFILTERS(fact_crime_wi_county[county]),
+            fact_crime_wi_county[relationship] IN _FamRel,
+            IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+        )
+)
+```
+
+---
+
+## 7. Per-100k County Measure
+
+Requires `dim_county` bridge table (§9). Population variable is `B01003_001E`
+(total population) — confirm the `var_base` value matches your ACS table.
+
+```dax
+Crime_Per_100k =
+VAR _OffenseKey = SELECTEDVALUE(dim_offense_slicer[OffenseKey], "ALL")
+VAR _RelKey     = SELECTEDVALUE(dim_relationship_slicer[RelKey], "ALL")
+VAR _IPRel = {
+    "Victim Was Spouse", "Victim Was Common-Law Spouse",
+    "Victim was Ex-Spouse",
+    "Victim Was Ex-Relationship (Ex-Boyfriend/Girlfriend)",
+    "Victim Was Boyfriend/Girlfriend"
+}
+VAR _FamRel = {
+    "Victim Was Child", "Victim Was Child of Boyfriend or Girlfriend",
+    "Victim Was Parent", "Victim Was Stepchild",
+    "Victim Was Stepparent", "Victim was Foster Parent"
+}
+
+VAR _CrimeCount =
+    SWITCH(
+        _RelKey,
+        "ALL",
+            CALCULATE(SUM(fact_crime_wi_county[estimate]),
+                IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+            ),
+        "INTIMATE_PARTNER",
+            CALCULATE(SUM(fact_crime_wi_county[estimate]),
+                fact_crime_wi_county[relationship] IN _IPRel,
+                IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+            ),
+        "FAMILY",
+            CALCULATE(SUM(fact_crime_wi_county[estimate]),
+                fact_crime_wi_county[relationship] IN _FamRel,
+                IF(_OffenseKey <> "ALL", fact_crime_wi_county[metric] = _OffenseKey)
+            )
+    )
+
+VAR _Population =
+    CALCULATE(
+        SUM(fact_acs_wi_county[estimate]),
+        fact_acs_wi_county[var_base] = "B01003_001E"
+    )
+
+RETURN
+    IF(
+        _Population > 0,
+        DIVIDE(_CrimeCount, _Population) * 100000,
+        BLANK()
+    )
+```
+
+---
+
+## 8. Offense Category Summary Measure
+
+Optional. Useful for a donut chart showing the breakdown of incidents by category
+regardless of which specific metric is selected.
+
+```dax
+Crime_Count_By_Category =
+VAR _RelKey = SELECTEDVALUE(dim_relationship_slicer[RelKey], "ALL")
+VAR _IPRel = {
+    "Victim Was Spouse", "Victim Was Common-Law Spouse",
+    "Victim was Ex-Spouse",
+    "Victim Was Ex-Relationship (Ex-Boyfriend/Girlfriend)",
+    "Victim Was Boyfriend/Girlfriend"
+}
+VAR _FamRel = {
+    "Victim Was Child", "Victim Was Child of Boyfriend or Girlfriend",
+    "Victim Was Parent", "Victim Was Stepchild",
+    "Victim Was Stepparent", "Victim was Foster Parent"
+}
+RETURN
+SWITCH(
+    _RelKey,
+    "ALL",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            NOT ISBLANK(fact_crime_wi_county[offense_category])
+        ),
+    "INTIMATE_PARTNER",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            NOT ISBLANK(fact_crime_wi_county[offense_category]),
+            fact_crime_wi_county[relationship] IN _IPRel
+        ),
+    "FAMILY",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            NOT ISBLANK(fact_crime_wi_county[offense_category]),
+            fact_crime_wi_county[relationship] IN _FamRel
+        )
+)
+```
+
+Put `fact_crime_wi_county[offense_category]` on the axis of a donut or bar chart
+with this measure as values. It ignores the offense slicer by design (axis IS the
+category); responds to the relationship slicer.
+
+---
+
+## 9. `dim_county` Bridge Table
+
+Needed only for [Crime_Per_100k]. Creates a mapping from the 3-digit `county_fips`
+in the crime fact table to the full ACS `geo_id` format (e.g. `"0500000US55025"`).
+
+```dax
+dim_county =
+SELECTCOLUMNS(
+    FILTER(
+        DISTINCT(
+            SELECTCOLUMNS(fact_crime_wi_county, "county_fips", fact_crime_wi_county[county_fips])
+        ),
+        NOT ISBLANK([county_fips])
+    ),
+    "county_fips", [county_fips],
+    "geo_id", "0500000US55" & [county_fips]
+)
+```
+
+After creating this table, set two relationships in the Model view:
+
+| From | To | Cardinality | Active |
+|---|---|---|---|
+| `dim_county[county_fips]` | `fact_crime_wi_county[county_fips]` | Many-to-one | Yes |
+| `dim_county[geo_id]` | `fact_acs_wi_county[geo_id]` | Many-to-one | Yes |
+
+---
+
+## 10. Setup Checklist
+
+### Step 1 — Load the fact table
+Get Data → Text/CSV → `fact_crime_agg.csv`. Rename query to `fact_crime_wi_county`.
+Verify all 14 columns are present (see Table Names section at top).
+
+### Step 2 — Create calculated tables
+Modeling → New Table. Paste in order:
+1. `dim_demographic_slicer` (§1)
+2. `dim_demo_axis` (§2)
+3. `dim_offense_slicer` (§3)
+4. `dim_relationship_slicer` (§4)
+5. `dim_county` (§9) — only after `fact_acs_wi_county` is loaded
+
+### Step 3 — Set sort columns
+In each dim table, set the sort column via **Column Tools → Sort by Column**:
+
+| Table | Column | Sort by |
+|---|---|---|
+| `dim_demographic_slicer` | `DemoLabel` | `SortOrder` |
+| `dim_demo_axis` | `DemoLabel` | `SortOrder` |
+| `dim_offense_slicer` | `OffenseLabel` | `SortOrder` |
+| `dim_relationship_slicer` | `RelLabel` | `SortOrder` |
+
+### Step 4 — Relationships
+Create only the two relationships in §9 for `dim_county`.
+**Do not** create relationships from any slicer table or `dim_demo_axis` to `fact_crime_wi_county` — all slicer filtering is done inside the DAX measures via `SELECTEDVALUE`.
+
+### Step 5 — Add measures
+Create an empty calculated table `_Measures = ROW("x", 0)` to hold all measures.
+Add each measure from §5–§8 to this table.
+
+### Step 6 — Build the Safety page canvas
+
+| Visual | Fields |
+|---|---|
+| Slicer — Demographic View | `dim_demographic_slicer[DemoLabel]`, single-select |
+| Slicer — Offense Type | `dim_offense_slicer[OffenseLabel]`, single-select |
+| Slicer — Relationship | `dim_relationship_slicer[RelLabel]`, single-select |
+| Card — Dynamic title | `[Selected_Crime_Label]` |
+| Card — Statewide total | `[Crime_Count_Statewide]` |
+| Bar chart — Demographic breakdown | Axis: `dim_demo_axis[DemoLabel]` · Values: `[Crime_Count]` |
+| Filled map / Choropleth | Location: `fact_crime_wi_county[county]` or `dim_county[county_fips]` · Values: `[Crime_Per_100k]` |
+| Donut — Offense category | Axis: `fact_crime_wi_county[offense_category]` · Values: `[Crime_Count_By_Category]` |
+
+### Step 7 — Slicer default selections
+Set each slicer's default selection (via Bookmarks or slicer default value):
+- Demographic View → **Victim Sex**
+- Offense Type → **All Offense Types**
+- Relationship → **All Relationships**
+
+---
+
+## 11. Known Issues & Notes
+
+**Relationship casing**: Two relationship names use lowercase "was" instead of "Was":
+`"Victim was Ex-Spouse"` and `"Victim was Foster Parent"`. Both forms are hard-coded
+in every IN filter above. If the source data is corrected, update each measure.
+
+**NULL relationship rows**: `victim_count` and `offender_count` rows have a NULL
+`relationship`. When `_RelKey = "INTIMATE_PARTNER"` or `"FAMILY"`, these rows are
+excluded by the IN filter, which is correct — they are aggregate count rows, not
+offense-specific rows.
+
+**Offender demographic + Victim slicer mismatch**: `offender_count` rows carry
+offender demographics (`off_sex`, `off_race`, `off_age`) but null victim demographics.
+If the demographic slicer is set to a victim dimension and the offense slicer to
+`offender_count`, `[Crime_Count]` will return 0 for all demographic axis values.
+Recommend either: (a) exclude `offender_count` from the offense slicer default, or
+(b) add a note to the page explaining this combination.
+
+**county_2**: Multi-county agencies produce rows with a second county in `county_2`.
+These incidents are attributed to the primary `county` only in all measures above.
+`county_2` is present in the fact table if future attribution to both counties is
+needed.
+
+**victim_count vs offense metrics**: `victim_count` counts unique DV victims;
+offense-specific metrics count victim–offense pairs and will exceed `victim_count`
+when one victim has multiple offenses in the same incident. Do not add offense-type
+counts to `victim_count` in the same visual.
