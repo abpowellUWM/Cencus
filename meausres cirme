@@ -146,3 +146,111 @@ IF(
         BLANK()
     )
 )
+
+
+Selected Demo Breakdown Female =
+VAR _cat       = SELECTEDVALUE(dim_offense_category[offense_category])
+VAR _person    = SELECTEDVALUE(dim_dem_crime_category[person_type])
+VAR _breakdown = SELECTEDVALUE(dim_dem_crime_category[breakdown])
+VAR _label     = SELECTEDVALUE(dim_dem_crime_category[group_label])
+
+RETURN
+IF(
+    ISBLANK(_cat) || ISBLANK(_person) || ISBLANK(_breakdown) || ISBLANK(_label),
+    BLANK(),
+    SWITCH(
+        TRUE(),
+
+        -- Victim — Age ---------------------------------------------------------
+        _person = "Victim" && _breakdown = "Age",
+            CALCULATE(
+                SUM(fact_crime_wi_county[estimate]),
+                fact_crime_wi_county[offense_category] = _cat,
+                fact_crime_wi_county[vic_sex]          = "F",
+                fact_crime_wi_county[vic_age]          = _label
+            ),
+
+        -- Victim — Race --------------------------------------------------------
+        _person = "Victim" && _breakdown = "Race",
+            CALCULATE(
+                SUM(fact_crime_wi_county[estimate]),
+                fact_crime_wi_county[offense_category] = _cat,
+                fact_crime_wi_county[vic_sex]          = "F",
+                fact_crime_wi_county[vic_race]         = _label
+            ),
+
+        -- Offender — Age -------------------------------------------------------
+        _person = "Offender" && _breakdown = "Age",
+            CALCULATE(
+                SUM(fact_crime_wi_county[estimate]),
+                fact_crime_wi_county[offense_category] = _cat,
+                fact_crime_wi_county[off_sex]          = "F",
+                fact_crime_wi_county[off_age]          = _label
+            ),
+
+        -- Offender — Race ------------------------------------------------------
+        _person = "Offender" && _breakdown = "Race",
+            CALCULATE(
+                SUM(fact_crime_wi_county[estimate]),
+                fact_crime_wi_county[offense_category] = _cat,
+                fact_crime_wi_county[off_sex]          = "F",
+                fact_crime_wi_county[off_race]         = _label
+            ),
+
+        BLANK()
+    )
+)
+
+
+Selected Demo Breakdown Male =
+VAR _cat       = SELECTEDVALUE(dim_offense_category[offense_category])
+VAR _person    = SELECTEDVALUE(dim_dem_crime_category[person_type])
+VAR _breakdown = SELECTEDVALUE(dim_dem_crime_category[breakdown])
+VAR _label     = SELECTEDVALUE(dim_dem_crime_category[group_label])
+
+RETURN
+IF(
+    ISBLANK(_cat) || ISBLANK(_person) || ISBLANK(_breakdown) || ISBLANK(_label),
+    BLANK(),
+    SWITCH(
+        TRUE(),
+
+        -- Victim — Age ---------------------------------------------------------
+        _person = "Victim" && _breakdown = "Age",
+            CALCULATE(
+                SUM(fact_crime_wi_county[estimate]),
+                fact_crime_wi_county[offense_category] = _cat,
+                fact_crime_wi_county[vic_sex]          = "M",
+                fact_crime_wi_county[vic_age]          = _label
+            ),
+
+        -- Victim — Race --------------------------------------------------------
+        _person = "Victim" && _breakdown = "Race",
+            CALCULATE(
+                SUM(fact_crime_wi_county[estimate]),
+                fact_crime_wi_county[offense_category] = _cat,
+                fact_crime_wi_county[vic_sex]          = "M",
+                fact_crime_wi_county[vic_race]         = _label
+            ),
+
+        -- Offender — Age -------------------------------------------------------
+        _person = "Offender" && _breakdown = "Age",
+            CALCULATE(
+                SUM(fact_crime_wi_county[estimate]),
+                fact_crime_wi_county[offense_category] = _cat,
+                fact_crime_wi_county[off_sex]          = "M",
+                fact_crime_wi_county[off_age]          = _label
+            ),
+
+        -- Offender — Race ------------------------------------------------------
+        _person = "Offender" && _breakdown = "Race",
+            CALCULATE(
+                SUM(fact_crime_wi_county[estimate]),
+                fact_crime_wi_county[offense_category] = _cat,
+                fact_crime_wi_county[off_sex]          = "M",
+                fact_crime_wi_county[off_race]         = _label
+            ),
+
+        BLANK()
+    )
+)
