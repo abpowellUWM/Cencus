@@ -1,0 +1,319 @@
+dim_offense_category =
+DATATABLE(
+    "offense_type",   STRING,
+    "offense_label",  STRING,
+    "SortType",       INTEGER,
+    "SortLabel",      INTEGER,
+    {
+        -- Assault
+        { "Assault",       "Aggravated Assault",                                  1, 1 },
+        { "Assault",       "Intimidation",                                        1, 2 },
+        { "Assault",       "Simple Assault",                                      1, 3 },
+
+        -- Homicide
+        { "Homicide",      "Justifiable Homicide",                                2, 1 },
+        { "Homicide",      "Murder and Nonnegligent Manslaughter",                2, 2 },
+        { "Homicide",      "Negligent Manslaughter",                              2, 3 },
+
+        -- Kidnapping
+        { "Kidnapping",    "Kidnapping/Abduction",                                3, 1 },
+
+        -- Larceny/Theft
+        { "Larceny/Theft", "All Other Larceny",                                   4, 1 },
+        { "Larceny/Theft", "Pocket-picking",                                      4, 2 },
+        { "Larceny/Theft", "Purse-snatching",                                     4, 3 },
+        { "Larceny/Theft", "Shoplifting",                                         4, 4 },
+        { "Larceny/Theft", "Theft From Building",                                 4, 5 },
+        { "Larceny/Theft", "Theft From Coin-Operated Machine or Device",          4, 6 },
+        { "Larceny/Theft", "Theft From Motor Vehicle",                            4, 7 },
+        { "Larceny/Theft", "Theft of Motor Vehicle Parts or Accessories",         4, 8 },
+
+        -- Property
+        { "Property",      "Burglary/Breaking & Entering",                        5, 1 },
+        { "Property",      "Counterfeiting/Forgery",                              5, 2 },
+        { "Property",      "Destruction/Damage/Vandalism of Property",            5, 3 },
+        { "Property",      "Embezzlement",                                        5, 4 },
+        { "Property",      "Extortion/Blackmail",                                 5, 5 },
+        { "Property",      "Motor Vehicle Theft",                                 5, 6 },
+        { "Property",      "Robbery",                                             5, 7 },
+
+        -- Sex Offenses
+        { "Sex Offenses",  "Criminal Sexual Contact",                             6, 1 },
+        { "Sex Offenses",  "Incest",                                              6, 2 },
+        { "Sex Offenses",  "Rape",                                                6, 3 },
+        { "Sex Offenses",  "Sexual Assault With An Object",                       6, 4 },
+        { "Sex Offenses",  "Sodomy",                                              6, 5 }
+    }
+)
+
+
+dim_dem_crime_category =
+DATATABLE(
+    "group_key",      STRING,
+    "metric",         STRING,
+    "gender",         STRING,
+    "category",       STRING,
+    "group_label",    STRING,
+    "SortMetric",     INTEGER,
+    "SortGender",     INTEGER,
+    "SortLabel",      INTEGER,
+    {
+        -- Age Group — Female
+        { "age_female",   "Age Group", "Female", "Age Group", "Under 18",                                1, 1, 1 },
+        { "age_female",   "Age Group", "Female", "Age Group", "18-24",                                   1, 1, 2 },
+        { "age_female",   "Age Group", "Female", "Age Group", "25-34",                                   1, 1, 3 },
+        { "age_female",   "Age Group", "Female", "Age Group", "35-44",                                   1, 1, 4 },
+        { "age_female",   "Age Group", "Female", "Age Group", "45-54",                                   1, 1, 5 },
+        { "age_female",   "Age Group", "Female", "Age Group", "55-64",                                   1, 1, 6 },
+        { "age_female",   "Age Group", "Female", "Age Group", "65+",                                     1, 1, 7 },
+
+        -- Age Group — Male
+        { "age_male",     "Age Group", "Male",   "Age Group", "Under 18",                                1, 2, 1 },
+        { "age_male",     "Age Group", "Male",   "Age Group", "18-24",                                   1, 2, 2 },
+        { "age_male",     "Age Group", "Male",   "Age Group", "25-34",                                   1, 2, 3 },
+        { "age_male",     "Age Group", "Male",   "Age Group", "35-44",                                   1, 2, 4 },
+        { "age_male",     "Age Group", "Male",   "Age Group", "45-54",                                   1, 2, 5 },
+        { "age_male",     "Age Group", "Male",   "Age Group", "55-64",                                   1, 2, 6 },
+        { "age_male",     "Age Group", "Male",   "Age Group", "65+",                                     1, 2, 7 },
+
+        -- Race — Female
+        { "race_female",  "Race", "Female", "Race", "White",                                             2, 1, 1 },
+        { "race_female",  "Race", "Female", "Race", "Black or African American",                         2, 1, 2 },
+        { "race_female",  "Race", "Female", "Race", "American Indian or Alaska Native",                  2, 1, 3 },
+        { "race_female",  "Race", "Female", "Race", "Asian",                                             2, 1, 4 },
+        { "race_female",  "Race", "Female", "Race", "Native Hawaiian or Other Pacific Islander",         2, 1, 5 },
+        { "race_female",  "Race", "Female", "Race", "Unknown",                                           2, 1, 6 },
+
+        -- Race — Male
+        { "race_male",    "Race", "Male",   "Race", "White",                                             2, 2, 1 },
+        { "race_male",    "Race", "Male",   "Race", "Black or African American",                         2, 2, 2 },
+        { "race_male",    "Race", "Male",   "Race", "American Indian or Alaska Native",                  2, 2, 3 },
+        { "race_male",    "Race", "Male",   "Race", "Asian",                                             2, 2, 4 },
+        { "race_male",    "Race", "Male",   "Race", "Native Hawaiian or Other Pacific Islander",         2, 2, 5 },
+        { "race_male",    "Race", "Male",   "Race", "Unknown",                                           2, 2, 6 }
+    }
+)
+
+Selected Crime Count =
+VAR _type  = SELECTEDVALUE(dim_offense_category[offense_type])
+VAR _label = SELECTEDVALUE(dim_offense_category[offense_label])
+
+RETURN
+SWITCH(
+    TRUE(),
+
+    -- Assault ------------------------------------------------------------------
+    _label = "Aggravated Assault",
+        CALCULATE(
+            SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_aggravated_assault"
+        ),
+
+    _label = "Intimidation",
+        CALCULATE(
+            SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_intimidation"
+        ),
+
+    _label = "Simple Assault",
+        CALCULATE(
+            SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_simple_assault"
+        ),
+
+    -- Homicide -----------------------------------------------------------------
+    _label = "Justifiable Homicide",
+        CALCULATE(
+            SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_justifiable_homicide"
+        ),
+
+    _label = "Murder and Nonnegligent Manslaughter",
+        CALCULATE(
+            SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_murder_and_nonnegligent_manslaughter"
+        ),
+
+    _label = "Negligent Manslaughter",
+        CALCULATE(
+            SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_negligent_manslaughter"
+        ),
+
+    -- Kidnapping ---------------------------------------------------------------
+    _label = "Kidnapping/Abduction",
+        CALCULATE(
+            SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_kidnapping_abduction"
+        ),
+
+    -- Larceny/Theft ------------------------------------------------------------
+    _label = "All Other Larceny",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_all_other_larceny"),
+
+    _label = "Pocket-picking",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_pocket_picking"),
+
+    _label = "Purse-snatching",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_purse_snatching"),
+
+    _label = "Shoplifting",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_shoplifting"),
+
+    _label = "Theft From Building",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_theft_from_building"),
+
+    _label = "Theft From Coin-Operated Machine or Device",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_theft_from_coin_operated_machine_or_device"),
+
+    _label = "Theft From Motor Vehicle",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_theft_from_motor_vehicle"),
+
+    _label = "Theft of Motor Vehicle Parts or Accessories",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_theft_of_motor_vehicle_parts_or_accessories"),
+
+    -- Property -----------------------------------------------------------------
+    _label = "Burglary/Breaking & Entering",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_burglary_breaking_entering"),
+
+    _label = "Counterfeiting/Forgery",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_counterfeiting_forgery"),
+
+    _label = "Destruction/Damage/Vandalism of Property",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_destruction_damage_vandalism_of_property"),
+
+    _label = "Embezzlement",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_embezzlement"),
+
+    _label = "Extortion/Blackmail",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_extortion_blackmail"),
+
+    _label = "Motor Vehicle Theft",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_motor_vehicle_theft"),
+
+    _label = "Robbery",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_robbery"),
+
+    -- Sex Offenses -------------------------------------------------------------
+    _label = "Criminal Sexual Contact",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_criminal_sexual_contact"),
+
+    _label = "Incest",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_incest"),
+
+    _label = "Rape",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_rape"),
+
+    _label = "Sexual Assault With An Object",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_sexual_assault_with_an_object"),
+
+    _label = "Sodomy",
+        CALCULATE(SUM(fact_crime_wi_county[estimate]),
+            fact_crime_wi_county[metric] = "victim_sodomy"),
+
+    BLANK()
+)
+
+Selected Demo Breakdown =
+VAR _metric   = SELECTEDVALUE(dim_dem_crime_category[metric])
+VAR _gender   = SELECTEDVALUE(dim_dem_crime_category[gender])
+VAR _label    = SELECTEDVALUE(dim_dem_crime_category[group_label])
+VAR _offense  = SELECTEDVALUE(dim_offense_category[offense_label])
+
+-- Resolve offense label to its metric slug in fact_crime_wi_county
+VAR _offense_filter =
+    SWITCH(
+        _offense,
+        "Aggravated Assault",                          "victim_aggravated_assault",
+        "Intimidation",                                "victim_intimidation",
+        "Simple Assault",                              "victim_simple_assault",
+        "Justifiable Homicide",                        "victim_justifiable_homicide",
+        "Murder and Nonnegligent Manslaughter",        "victim_murder_and_nonnegligent_manslaughter",
+        "Negligent Manslaughter",                      "victim_negligent_manslaughter",
+        "Kidnapping/Abduction",                        "victim_kidnapping_abduction",
+        "All Other Larceny",                           "victim_all_other_larceny",
+        "Pocket-picking",                              "victim_pocket_picking",
+        "Purse-snatching",                             "victim_purse_snatching",
+        "Shoplifting",                                 "victim_shoplifting",
+        "Theft From Building",                         "victim_theft_from_building",
+        "Theft From Coin-Operated Machine or Device",  "victim_theft_from_coin_operated_machine_or_device",
+        "Theft From Motor Vehicle",                    "victim_theft_from_motor_vehicle",
+        "Theft of Motor Vehicle Parts or Accessories", "victim_theft_of_motor_vehicle_parts_or_accessories",
+        "Burglary/Breaking & Entering",                "victim_burglary_breaking_entering",
+        "Counterfeiting/Forgery",                      "victim_counterfeiting_forgery",
+        "Destruction/Damage/Vandalism of Property",    "victim_destruction_damage_vandalism_of_property",
+        "Embezzlement",                                "victim_embezzlement",
+        "Extortion/Blackmail",                         "victim_extortion_blackmail",
+        "Motor Vehicle Theft",                         "victim_motor_vehicle_theft",
+        "Robbery",                                     "victim_robbery",
+        "Criminal Sexual Contact",                     "victim_criminal_sexual_contact",
+        "Incest",                                      "victim_incest",
+        "Rape",                                        "victim_rape",
+        "Sexual Assault With An Object",               "victim_sexual_assault_with_an_object",
+        "Sodomy",                                      "victim_sodomy",
+        BLANK()
+    )
+
+RETURN
+IF(
+    ISBLANK(_offense_filter),
+    BLANK(),
+    SWITCH(
+        TRUE(),
+
+        -- Age Group breakdowns -------------------------------------------------
+        _metric = "Age Group" && _gender = "Female",
+            CALCULATE(
+                SUM(fact_crime_wi_county[estimate]),
+                fact_crime_wi_county[metric]  = _offense_filter,
+                fact_crime_wi_county[vic_sex] = "F",
+                fact_crime_wi_county[vic_age] = _label
+            ),
+
+        _metric = "Age Group" && _gender = "Male",
+            CALCULATE(
+                SUM(fact_crime_wi_county[estimate]),
+                fact_crime_wi_county[metric]  = _offense_filter,
+                fact_crime_wi_county[vic_sex] = "M",
+                fact_crime_wi_county[vic_age] = _label
+            ),
+
+        -- Race breakdowns ------------------------------------------------------
+        _metric = "Race" && _gender = "Female",
+            CALCULATE(
+                SUM(fact_crime_wi_county[estimate]),
+                fact_crime_wi_county[metric]   = _offense_filter,
+                fact_crime_wi_county[vic_sex]  = "F",
+                fact_crime_wi_county[vic_race] = _label
+            ),
+
+        _metric = "Race" && _gender = "Male",
+            CALCULATE(
+                SUM(fact_crime_wi_county[estimate]),
+                fact_crime_wi_county[metric]   = _offense_filter,
+                fact_crime_wi_county[vic_sex]  = "M",
+                fact_crime_wi_county[vic_race] = _label
+            ),
+
+        BLANK()
+    )
+)
