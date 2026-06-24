@@ -1,177 +1,238 @@
-# Demographics Page — Build Plan
-**Two filled maps: one female, one male**
-The dropdown selector controls which indicator both maps display simultaneously.
-Selecting a county on either map cross-filters the other.
+# Geography Page — Cascade Selector Build Plan
+**One table drives everything. Three slicers (Topic → Indicator → Demographic) cascade automatically because all three columns live in the same table.**
 
 ---
 
-## What Already Exists (do not recreate)
+## ⚠️ Before You Start — Verify These Two Things
 
-| Item | Table | Notes |
-|---|---|---|
-| `(IND) Women Poverty Rate` | `fact_acs_wi_county` | ✅ ready |
-| `(IND) Men Poverty Rate` | `fact_acs_wi_county` | ✅ ready |
-| `(IND) Women Labor Force Participation Rate` | `fact_acs_wi_county` | ✅ ready |
-| `(IND) Women vs Overall Poverty Gap` | `fact_acs_wi_county` | ✅ ready |
-| `(IND) Female Population Share` | `fact_acs_wi_county` | ✅ ready |
-| `(IND) Female Population` | `fact_acs_wi_county` | ✅ ready |
-| `Homeownership Rate` | `fact_acs_wi_county` | ✅ ready (overall, not gendered) |
-| `dim_geography[County Name]` | `dim_geography` | ✅ use for map location + county slicer |
+1. **Go to Data view → `dim_dem_category`** and confirm the exact spelling of values in `group_label` and any category type column. The strings in the table below must match *exactly* or the demographic rows will return blank on the map.
+
+2. **Check `fact_acs_wi_county` or your earnings table** for median earnings columns. This data comes from ACS Table B24022 (not C24010 — C24010 has counts, not earnings). If you have not loaded median earnings data yet, the Economy rows will return blank until that table is added.
 
 ---
 
-## Step 1 — New Calculated Table: `dim_demo_indicator`
-
-This is a **new** table — do not use or modify the existing `Demographic Selector` table (that one drives the pie charts on the existing page and uses different categories).
+## Step 1 — Create Table: `dim_geography_categories`
 
 **Modeling → New Table → paste:**
 
 ```
-dim_demo_indicator = DATATABLE(
-    "Indicator", STRING,
-    "Sort Order", INTEGER,
+dim_geography_categories = DATATABLE(
+    "Topic",        STRING,
+    "Indicator",    STRING,
+    "Demographic",  STRING,
+    "Measure Name", STRING,
+    "Sort Order",   INTEGER,
     {
-        { "Poverty Rate",              1 },
-        { "Labor Force Participation", 2 },
-        { "Population Share",          3 },
-        { "Poverty Gap",               4 },
-        { "Homeownership",             5 }
+        { "Demographics", "Age",           "Under 18",                    "Under 18",                      1  },
+        { "Demographics", "Age",           "18 to 24 years",              "18 to 24 years",                2  },
+        { "Demographics", "Age",           "25 to 34 years",              "25 to 34 years",                3  },
+        { "Demographics", "Age",           "35 to 44 years",              "35 to 44 years",                4  },
+        { "Demographics", "Age",           "45 to 54 years",              "45 to 54 years",                5  },
+        { "Demographics", "Age",           "55 to 64 years",              "55 to 64 years",                6  },
+        { "Demographics", "Age",           "65 years and over",           "65 years and over",             7  },
+        { "Demographics", "Race",          "White",                       "White",                         8  },
+        { "Demographics", "Race",          "Black or African American",   "Black or African American",     9  },
+        { "Demographics", "Race",          "Hispanic or Latino",          "Hispanic or Latino",            10 },
+        { "Demographics", "Race",          "Asian",                       "Asian",                         11 },
+        { "Demographics", "Race",          "Other",                       "Other",                         12 },
+        { "Demographics", "Marital Status","Married",                     "Married",                       13 },
+        { "Demographics", "Marital Status","Never Married",               "Never Married",                 14 },
+        { "Demographics", "Marital Status","Divorced",                    "Divorced",                      15 },
+        { "Demographics", "Marital Status","Separated",                   "Separated",                     16 },
+        { "Demographics", "Marital Status","Widowed",                     "Widowed",                       17 },
+        { "Demographics", "Education",     "Less than High School",       "Less than High School",         18 },
+        { "Demographics", "Education",     "High School or GED",          "High School or GED",            19 },
+        { "Demographics", "Education",     "Some College",                "Some College",                  20 },
+        { "Demographics", "Education",     "Bachelor's Degree",           "Bachelor's Degree",             21 },
+        { "Demographics", "Education",     "Graduate or Professional",    "Graduate or Professional",      22 },
+        { "Health",       "Births",        "Total",                       "Total Births WI",               23 },
+        { "Health",       "Births",        "Teen (Under 20)",             "Teen Birth Count",              24 },
+        { "Crime and Violence", "Victims",       "Female",                "Female Victim Count",           25 },
+        { "Crime and Violence", "Victims",       "Male",                  "Male Victim Count",             26 },
+        { "Crime and Violence", "Offenders",     "Female",                "Female Offender Count",         27 },
+        { "Crime and Violence", "Offenders",     "Male",                  "Male Offender Count",           28 },
+        { "Crime and Violence", "Assault",       "Female Victims",        "Assault Female Victims",        29 },
+        { "Crime and Violence", "Assault",       "Male Victims",          "Assault Male Victims",          30 },
+        { "Crime and Violence", "Sex Offenses",  "Female Victims",        "Sex Offense Female Victims",    31 },
+        { "Crime and Violence", "Sex Offenses",  "Male Victims",          "Sex Offense Male Victims",      32 },
+        { "Crime and Violence", "Homicide",      "Female Victims",        "Homicide Female Victims",       33 },
+        { "Crime and Violence", "Homicide",      "Male Victims",          "Homicide Male Victims",         34 },
+        { "Economy", "All Occupations",                        "Female",  "Median Earnings All Female",    35 },
+        { "Economy", "All Occupations",                        "Male",    "Median Earnings All Male",      36 },
+        { "Economy", "Management, Business, Science & Arts",   "Female",  "Median Earnings Mgmt Female",   37 },
+        { "Economy", "Management, Business, Science & Arts",   "Male",    "Median Earnings Mgmt Male",     38 },
+        { "Economy", "Service",                                "Female",  "Median Earnings Service Female",39 },
+        { "Economy", "Service",                                "Male",    "Median Earnings Service Male",  40 },
+        { "Economy", "Sales & Office",                         "Female",  "Median Earnings Sales Female",  41 },
+        { "Economy", "Sales & Office",                         "Male",    "Median Earnings Sales Male",    42 },
+        { "Economy", "Natural Resources, Construction & Maintenance", "Female", "Median Earnings NRC Female", 43 },
+        { "Economy", "Natural Resources, Construction & Maintenance", "Male",   "Median Earnings NRC Male",   44 },
+        { "Economy", "Production, Transportation & Material Moving",  "Female", "Median Earnings Prod Female",45 },
+        { "Economy", "Production, Transportation & Material Moving",  "Male",   "Median Earnings Prod Male",  46 }
     }
 )
 ```
 
 After creating: right-click `Sort Order` → **Hide in report view.**
 
----
-
-## Step 2 — New Measures to Create
-
-### 2a — Male measures (check your data first)
-
-Before creating these, verify the columns exist in `fact_acs_wi_county`.
-Open the table in Power Query or Data view and check for:
-- A male labor force participation column/row
-- A male population share column/row
-
-If the data is there, create these on `fact_acs_wi_county`:
-
-**`(IND) Men Labor Force Participation Rate`** — format: Percentage (0.00%)
-```
-(IND) Men Labor Force Participation Rate =
--- Replace the column name below with whatever your male LFP column is named
-DIVIDE(
-    CALCULATE(SUM(fact_acs_wi_county[male_labor_force])),
-    CALCULATE(SUM(fact_acs_wi_county[male_population])),
-    0
-)
-```
-> ⚠️ The column names above are placeholders. Use your actual column names.
+> ⚠️ **Demographics rows:** The strings in the `Demographic` column (age groups, races, etc.) must exactly match the `group_label` values in your `dim_dem_category` table. Go check those values now and update any that don't match before building measures.
 
 ---
 
-**`(IND) Male Population Share`** — format: Percentage (0.00%)
-```
-(IND) Male Population Share =
-DIVIDE(
-    CALCULATE(SUM(fact_acs_wi_county[male_population])),
-    CALCULATE(SUM(fact_acs_wi_county[total_population])),
-    0
-)
-```
-> ⚠️ Same — replace column names with your actuals.
+## Step 2 — Measures to Create
+
+There are **two measure patterns** depending on topic. Both go on `fact_acs_wi_county`.
 
 ---
 
-### 2b — Switch measures (create these on `fact_acs_wi_county`)
+### Pattern A — Demographics (dynamic filter, no SWITCH needed)
 
-These are the two measures you drop into the map visuals.
+These measures ignore the `Measure Name` column entirely. They read the selected Indicator and Demographic directly from the cascade slicers and filter `dim_dem_category` using TREATAS.
 
-**`Selected Demo Female Map`** — leave format as Auto
+**`Selected Geography Female`** (create on `fact_acs_wi_county`, format: Auto)
+
 ```
-Selected Demo Female Map =
-SWITCH(
-    SELECTEDVALUE(dim_demo_indicator[Indicator], "Poverty Rate"),
-    "Poverty Rate",              [(IND) Women Poverty Rate],
-    "Labor Force Participation", [(IND) Women Labor Force Participation Rate],
-    "Population Share",          [(IND) Female Population Share],
-    "Poverty Gap",               [(IND) Women vs Overall Poverty Gap],
-    "Homeownership",             [Homeownership Rate],
-    BLANK()
+Selected Geography Female =
+VAR Topic       = SELECTEDVALUE(dim_geography_categories[Topic])
+VAR Indicator   = SELECTEDVALUE(dim_geography_categories[Indicator])
+VAR Group       = SELECTEDVALUE(dim_geography_categories[Demographic])
+VAR MeasureName = SELECTEDVALUE(dim_geography_categories[Measure Name])
+RETURN
+IF(
+    Topic = "Demographics",
+    CALCULATE(
+        [Selected Demo Breakdown Female],
+        TREATAS({ Group },      dim_dem_category[group_label]),
+        TREATAS({ Indicator },  dim_dem_category[category_type])
+    ),
+    SWITCH(
+        MeasureName,
+        "Total Births WI",              [Total Births WI],
+        "Teen Birth Count",             [Teen Birth Count],
+        "Female Victim Count",          [Female Victim Count],
+        "Assault Female Victims",       [Assault Female Victims],
+        "Sex Offense Female Victims",   [Sex Offense Female Victims],
+        "Homicide Female Victims",      [Homicide Female Victims],
+        "Median Earnings All Female",   [Median Earnings All Female],
+        "Median Earnings Mgmt Female",  [Median Earnings Mgmt Female],
+        "Median Earnings Service Female",[Median Earnings Service Female],
+        "Median Earnings Sales Female", [Median Earnings Sales Female],
+        "Median Earnings NRC Female",   [Median Earnings NRC Female],
+        "Median Earnings Prod Female",  [Median Earnings Prod Female],
+        BLANK()
+    )
 )
 ```
 
+> ⚠️ `dim_dem_category[category_type]` — verify this is the actual column name in your table that holds values like "Age", "Race", "Education", "Marital Status". Update the column name if it differs.
+
 ---
 
-**`Selected Demo Male Map`** — leave format as Auto
+**`Selected Geography Male`** (create on `fact_acs_wi_county`, format: Auto)
+
 ```
-Selected Demo Male Map =
-SWITCH(
-    SELECTEDVALUE(dim_demo_indicator[Indicator], "Poverty Rate"),
-    "Poverty Rate",              [(IND) Men Poverty Rate],
-    "Labor Force Participation", [(IND) Men Labor Force Participation Rate],
-    "Population Share",          [(IND) Male Population Share],
-    "Poverty Gap",               BLANK(),
-    "Homeownership",             [Homeownership Rate],
-    BLANK()
+Selected Geography Male =
+VAR Topic       = SELECTEDVALUE(dim_geography_categories[Topic])
+VAR Indicator   = SELECTEDVALUE(dim_geography_categories[Indicator])
+VAR Group       = SELECTEDVALUE(dim_geography_categories[Demographic])
+VAR MeasureName = SELECTEDVALUE(dim_geography_categories[Measure Name])
+RETURN
+IF(
+    Topic = "Demographics",
+    CALCULATE(
+        [Selected Demo Breakdown Male],
+        TREATAS({ Group },      dim_dem_category[group_label]),
+        TREATAS({ Indicator },  dim_dem_category[category_type])
+    ),
+    SWITCH(
+        MeasureName,
+        "Total Births WI",              [Total Births WI],
+        "Teen Birth Count",             [Teen Birth Count],
+        "Male Victim Count",            [Male Victim Count],
+        "Assault Male Victims",         [Assault Male Victims],
+        "Sex Offense Male Victims",     [Sex Offense Male Victims],
+        "Homicide Male Victims",        [Homicide Male Victims],
+        "Median Earnings All Male",     [Median Earnings All Male],
+        "Median Earnings Mgmt Male",    [Median Earnings Mgmt Male],
+        "Median Earnings Service Male", [Median Earnings Service Male],
+        "Median Earnings Sales Male",   [Median Earnings Sales Male],
+        "Median Earnings NRC Male",     [Median Earnings NRC Male],
+        "Median Earnings Prod Male",    [Median Earnings Prod Male],
+        BLANK()
+    )
 )
 ```
-> Note: Poverty Gap and some others may not have a male equivalent — those arms return BLANK() so the male map goes empty for those selections rather than showing wrong data. Remove or replace once you know what male data you have.
 
 ---
 
-## Step 3 — Page Layout Instructions
+### Pattern B — Economy Measures (create on your earnings fact table)
 
-### Slicer 1: Indicator dropdown
-- Visual: **Slicer**
-- Field: `dim_demo_indicator[Indicator]`
-- Style: **Dropdown** (single select)
-- No relationship needed — the SWITCH reads it via SELECTEDVALUE()
+These only work once your ACS median earnings data is loaded. The occupation names in C24010 are employment counts — **median earnings comes from ACS Table B24022**. If you have not loaded that table yet, create placeholder measures now and update the expressions later.
 
-### Slicer 2: County filter *(optional — maps are already geographic)*
-- Visual: **Slicer**
-- Field: `dim_geography[County Name]`
-- Style: **Dropdown**
-- This filters both maps when a county is selected
+Replace `[your_earnings_column]` with the actual column name from your earnings table.
 
-### Map 1: Female
-- Visual: **Filled Map** (or ArcGIS Map)
-- Location field: `dim_geography[County Name]`
-- Values field: `Selected Demo Female Map` (from `fact_acs_wi_county`)
-- Title: "Female — [selected indicator]" (use a dynamic title card if desired)
+```
+Median Earnings All Female =
+CALCULATE(
+    AVERAGE(fact_earnings_wi_county[median_earnings]),
+    fact_earnings_wi_county[sex] = "Female",
+    fact_earnings_wi_county[occupation] = "All"
+)
+```
 
-### Map 2: Male
-- Visual: **Filled Map**
-- Location field: `dim_geography[County Name]`
-- Values field: `Selected Demo Male Map` (from `fact_acs_wi_county`)
-- Title: "Male — [selected indicator]"
+Repeat for each combination below (12 measures total). The only thing that changes per measure is the `sex` and `occupation` filter values — match them to your actual column values.
 
-### KPI cards (optional, matches existing Demographics page style)
-Drop any of these existing measures into card visuals above the maps:
-- `(IND) Female Population Share`
-- `(IND) Women Poverty Rate`
-- `(IND) Men Poverty Rate`
+| Measure Name | sex filter | occupation filter |
+|---|---|---|
+| `Median Earnings All Female` | "Female" | "All" |
+| `Median Earnings All Male` | "Male" | "All" |
+| `Median Earnings Mgmt Female` | "Female" | "Management, business, science, and arts occupations" |
+| `Median Earnings Mgmt Male` | "Male" | "Management, business, science, and arts occupations" |
+| `Median Earnings Service Female` | "Female" | "Service occupations" |
+| `Median Earnings Service Male` | "Male" | "Service occupations" |
+| `Median Earnings Sales Female` | "Female" | "Sales and office occupations" |
+| `Median Earnings Sales Male` | "Male" | "Sales and office occupations" |
+| `Median Earnings NRC Female` | "Female" | "Natural resources, construction, and maintenance occupations" |
+| `Median Earnings NRC Male` | "Male" | "Natural resources, construction, and maintenance occupations" |
+| `Median Earnings Prod Female` | "Female" | "Production, transportation, and material moving occupations" |
+| `Median Earnings Prod Male` | "Male" | "Production, transportation, and material moving occupations" |
 
----
-
-## Step 4 — No Relationships Needed
-
-`dim_demo_indicator` is a disconnected parameter table. Do not create a relationship between it and any fact table. The SWITCH measures read it via SELECTEDVALUE() — same pattern as `dim_crime_selector` and `dim_geo_cascade`.
-
-The `dim_geography → fact_acs_wi_county` relationship should already exist from the existing pages. Confirm it is active in Model view.
+> The occupation filter strings above use the exact labels from ACS C24010. Match them to however the occupation column is stored in your earnings table.
 
 ---
 
-## Summary Checklist
+## Step 3 — Page Layout
 
-- [ ] Create `dim_demo_indicator` table
-- [ ] Hide `Sort Order` column in `dim_demo_indicator`
-- [ ] Verify male LFP and male population share columns exist in `fact_acs_wi_county`
-- [ ] Create `(IND) Men Labor Force Participation Rate` (if data exists)
-- [ ] Create `(IND) Male Population Share` (if data exists)
-- [ ] Create `Selected Demo Female Map` on `fact_acs_wi_county`
-- [ ] Create `Selected Demo Male Map` on `fact_acs_wi_county`
-- [ ] Add Indicator slicer to page (dim_demo_indicator)
-- [ ] Add County slicer to page (dim_geography)
-- [ ] Add Female filled map visual (Selected Demo Female Map)
-- [ ] Add Male filled map visual (Selected Demo Male Map)
-- [ ] Confirm dim_geography → fact_acs_wi_county relationship exists in Model view
+### Three cascade slicers (all from `dim_geography_categories`)
+| Slicer | Field | Style |
+|---|---|---|
+| 1 — Topic | `dim_geography_categories[Topic]` | Tile, Single select |
+| 2 — Indicator | `dim_geography_categories[Indicator]` | Dropdown, Single select |
+| 3 — Demographic | `dim_geography_categories[Demographic]` | Dropdown, Single select |
+
+Single-table cascade: selecting "Crime and Violence" in Slicer 1 automatically limits Slicer 2 to Assault/Homicide/Sex Offenses/Victims/Offenders, and so on. No DAX needed.
+
+### Two filled maps
+| Visual | Field — Location | Field — Values |
+|---|---|---|
+| Female map | `dim_geography[County Name]` | `Selected Geography Female` |
+| Male map | `dim_geography[County Name]` | `Selected Geography Male` |
+
+### No relationships needed
+`dim_geography_categories` is disconnected. The two SWITCH measures read it via SELECTEDVALUE(). The existing `dim_geography → fact_acs_wi_county` relationship handles county filtering on the maps.
+
+---
+
+## Checklist
+
+- [ ] Check `dim_dem_category` and confirm exact `group_label` values and the category type column name
+- [ ] Update the Demographic strings in `dim_geography_categories` to match exactly
+- [ ] Create `dim_geography_categories` table
+- [ ] Hide `Sort Order` column
+- [ ] Create `Selected Geography Female` on `fact_acs_wi_county`
+- [ ] Create `Selected Geography Male` on `fact_acs_wi_county`
+- [ ] Verify if ACS median earnings (B24022) table is already loaded — if not, load it before creating Economy measures
+- [ ] Create 12 Economy measures once earnings table is confirmed
+- [ ] Add 3 cascade slicers to Geography page
+- [ ] Add Female filled map (Selected Geography Female)
+- [ ] Add Male filled map (Selected Geography Male)
