@@ -1,0 +1,177 @@
+# Demographics Page — Build Plan
+**Two filled maps: one female, one male**
+The dropdown selector controls which indicator both maps display simultaneously.
+Selecting a county on either map cross-filters the other.
+
+---
+
+## What Already Exists (do not recreate)
+
+| Item | Table | Notes |
+|---|---|---|
+| `(IND) Women Poverty Rate` | `fact_acs_wi_county` | ✅ ready |
+| `(IND) Men Poverty Rate` | `fact_acs_wi_county` | ✅ ready |
+| `(IND) Women Labor Force Participation Rate` | `fact_acs_wi_county` | ✅ ready |
+| `(IND) Women vs Overall Poverty Gap` | `fact_acs_wi_county` | ✅ ready |
+| `(IND) Female Population Share` | `fact_acs_wi_county` | ✅ ready |
+| `(IND) Female Population` | `fact_acs_wi_county` | ✅ ready |
+| `Homeownership Rate` | `fact_acs_wi_county` | ✅ ready (overall, not gendered) |
+| `dim_geography[County Name]` | `dim_geography` | ✅ use for map location + county slicer |
+
+---
+
+## Step 1 — New Calculated Table: `dim_demo_indicator`
+
+This is a **new** table — do not use or modify the existing `Demographic Selector` table (that one drives the pie charts on the existing page and uses different categories).
+
+**Modeling → New Table → paste:**
+
+```
+dim_demo_indicator = DATATABLE(
+    "Indicator", STRING,
+    "Sort Order", INTEGER,
+    {
+        { "Poverty Rate",              1 },
+        { "Labor Force Participation", 2 },
+        { "Population Share",          3 },
+        { "Poverty Gap",               4 },
+        { "Homeownership",             5 }
+    }
+)
+```
+
+After creating: right-click `Sort Order` → **Hide in report view.**
+
+---
+
+## Step 2 — New Measures to Create
+
+### 2a — Male measures (check your data first)
+
+Before creating these, verify the columns exist in `fact_acs_wi_county`.
+Open the table in Power Query or Data view and check for:
+- A male labor force participation column/row
+- A male population share column/row
+
+If the data is there, create these on `fact_acs_wi_county`:
+
+**`(IND) Men Labor Force Participation Rate`** — format: Percentage (0.00%)
+```
+(IND) Men Labor Force Participation Rate =
+-- Replace the column name below with whatever your male LFP column is named
+DIVIDE(
+    CALCULATE(SUM(fact_acs_wi_county[male_labor_force])),
+    CALCULATE(SUM(fact_acs_wi_county[male_population])),
+    0
+)
+```
+> ⚠️ The column names above are placeholders. Use your actual column names.
+
+---
+
+**`(IND) Male Population Share`** — format: Percentage (0.00%)
+```
+(IND) Male Population Share =
+DIVIDE(
+    CALCULATE(SUM(fact_acs_wi_county[male_population])),
+    CALCULATE(SUM(fact_acs_wi_county[total_population])),
+    0
+)
+```
+> ⚠️ Same — replace column names with your actuals.
+
+---
+
+### 2b — Switch measures (create these on `fact_acs_wi_county`)
+
+These are the two measures you drop into the map visuals.
+
+**`Selected Demo Female Map`** — leave format as Auto
+```
+Selected Demo Female Map =
+SWITCH(
+    SELECTEDVALUE(dim_demo_indicator[Indicator], "Poverty Rate"),
+    "Poverty Rate",              [(IND) Women Poverty Rate],
+    "Labor Force Participation", [(IND) Women Labor Force Participation Rate],
+    "Population Share",          [(IND) Female Population Share],
+    "Poverty Gap",               [(IND) Women vs Overall Poverty Gap],
+    "Homeownership",             [Homeownership Rate],
+    BLANK()
+)
+```
+
+---
+
+**`Selected Demo Male Map`** — leave format as Auto
+```
+Selected Demo Male Map =
+SWITCH(
+    SELECTEDVALUE(dim_demo_indicator[Indicator], "Poverty Rate"),
+    "Poverty Rate",              [(IND) Men Poverty Rate],
+    "Labor Force Participation", [(IND) Men Labor Force Participation Rate],
+    "Population Share",          [(IND) Male Population Share],
+    "Poverty Gap",               BLANK(),
+    "Homeownership",             [Homeownership Rate],
+    BLANK()
+)
+```
+> Note: Poverty Gap and some others may not have a male equivalent — those arms return BLANK() so the male map goes empty for those selections rather than showing wrong data. Remove or replace once you know what male data you have.
+
+---
+
+## Step 3 — Page Layout Instructions
+
+### Slicer 1: Indicator dropdown
+- Visual: **Slicer**
+- Field: `dim_demo_indicator[Indicator]`
+- Style: **Dropdown** (single select)
+- No relationship needed — the SWITCH reads it via SELECTEDVALUE()
+
+### Slicer 2: County filter *(optional — maps are already geographic)*
+- Visual: **Slicer**
+- Field: `dim_geography[County Name]`
+- Style: **Dropdown**
+- This filters both maps when a county is selected
+
+### Map 1: Female
+- Visual: **Filled Map** (or ArcGIS Map)
+- Location field: `dim_geography[County Name]`
+- Values field: `Selected Demo Female Map` (from `fact_acs_wi_county`)
+- Title: "Female — [selected indicator]" (use a dynamic title card if desired)
+
+### Map 2: Male
+- Visual: **Filled Map**
+- Location field: `dim_geography[County Name]`
+- Values field: `Selected Demo Male Map` (from `fact_acs_wi_county`)
+- Title: "Male — [selected indicator]"
+
+### KPI cards (optional, matches existing Demographics page style)
+Drop any of these existing measures into card visuals above the maps:
+- `(IND) Female Population Share`
+- `(IND) Women Poverty Rate`
+- `(IND) Men Poverty Rate`
+
+---
+
+## Step 4 — No Relationships Needed
+
+`dim_demo_indicator` is a disconnected parameter table. Do not create a relationship between it and any fact table. The SWITCH measures read it via SELECTEDVALUE() — same pattern as `dim_crime_selector` and `dim_geo_cascade`.
+
+The `dim_geography → fact_acs_wi_county` relationship should already exist from the existing pages. Confirm it is active in Model view.
+
+---
+
+## Summary Checklist
+
+- [ ] Create `dim_demo_indicator` table
+- [ ] Hide `Sort Order` column in `dim_demo_indicator`
+- [ ] Verify male LFP and male population share columns exist in `fact_acs_wi_county`
+- [ ] Create `(IND) Men Labor Force Participation Rate` (if data exists)
+- [ ] Create `(IND) Male Population Share` (if data exists)
+- [ ] Create `Selected Demo Female Map` on `fact_acs_wi_county`
+- [ ] Create `Selected Demo Male Map` on `fact_acs_wi_county`
+- [ ] Add Indicator slicer to page (dim_demo_indicator)
+- [ ] Add County slicer to page (dim_geography)
+- [ ] Add Female filled map visual (Selected Demo Female Map)
+- [ ] Add Male filled map visual (Selected Demo Male Map)
+- [ ] Confirm dim_geography → fact_acs_wi_county relationship exists in Model view
