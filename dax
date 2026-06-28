@@ -1,766 +1,132 @@
-# Selector & Category Tables — DAX Reference
-Wisconsin Women's Council · Status of Women Dashboard · 2024 ACS Data
-
-Pattern matches the existing Health & Maternity page:
-- `dim_birth_category[category_type]` → slicer field
-- `dim_birth_category[category_label]` → chart axis field
-- `Birth Count Selector[Selected Birth Breakdown]` → chart values measure
-
-Each page below creates:
-1. A `dim_*_category` table (two slicer/axis columns + sort columns)
-2. A `* Selector` calculated table holding the main measure
-
-All `var_base` values come from `asc.py`. Rates use SUM(numerator)/SUM(denominator)
-which correctly aggregates across counties when no county filter is applied.
-**Exception**: median earnings (B20017, B20004) use a county-level value — averaging
-across counties gives a county-average, not a true statewide median. This is standard
-dashboard practice but should be noted in the report.
-
----
----
-
-## 1. Crime / Violence & Safety
-
-See `safety_page_dax.md` for the full crime page DAX.
-The crime page uses three separate Selector tables (Demographic View, Offense Type,
-Relationship) because it has more slicer dimensions than the other pages.
-
----
----
-
-## 2. Employment & Earnings
-
-### `dim_employment_category`
-
-```dax
-dim_employment_category =
-DATATABLE(
-    "category_type",  STRING,
-    "category_label", STRING,
-    "SortType",       INTEGER,
-    "SortLabel",      INTEGER,
-    {
-        -- Labor Force Participation
-        { "Labor Force Participation",    "Women",                              1, 1 },
-        { "Labor Force Participation",    "Men",                                1, 2 },
-
-        -- Median Annual Earnings (full-time, year-round workers)
-        { "Median Annual Earnings",       "Women",                              2, 1 },
-        { "Median Annual Earnings",       "Men",                                2, 2 },
-
-        -- Women's Median Earnings by Race
-        { "Women's Earnings by Race",     "White",                              3, 1 },
-        { "Women's Earnings by Race",     "Black or African American",          3, 2 },
-        { "Women's Earnings by Race",     "American Indian or Alaska Native",   3, 3 },
-        { "Women's Earnings by Race",     "Asian",                              3, 4 },
-        { "Women's Earnings by Race",     "Hispanic or Latino",                 3, 5 },
-
-        -- Women's Median Earnings by Education Level
-        { "Women's Earnings by Education", "Less than High School",             4, 1 },
-        { "Women's Earnings by Education", "High School Graduate",              4, 2 },
-        { "Women's Earnings by Education", "Some College or Associate's",       4, 3 },
-        { "Women's Earnings by Education", "Bachelor's Degree",                 4, 4 },
-        { "Women's Earnings by Education", "Graduate or Professional Degree",   4, 5 }
-    }
-)
-```
-
-Set sort columns:
-- `category_label` sorted by `SortLabel`
-- `category_type` sorted by `SortType`
-
----
-
-### `Employment Selector`
-
-```dax
-Employment Selector = ROW("_placeholder", 0)
-```
-
-Then add this measure to `Employment Selector`:
-
-```dax
-Selected Employment Breakdown =
-VAR _type  = SELECTEDVALUE(dim_employment_category[category_type])
-VAR _label = SELECTEDVALUE(dim_employment_category[category_label])
-
--- Female "in labor force" rows across age groups (B23001)
--- Each pair pulled by asc.py is (age-group total, in-LF total)
--- Odd-index of each pair = in LF: 089, 096, 103, 110, 117, 124, 131, 138, 145, 152, 159, 166, 173
-VAR _femLF = {
-    "B23001_089","B23001_096","B23001_103","B23001_110","B23001_117",
-    "B23001_124","B23001_131","B23001_138","B23001_145","B23001_152",
-    "B23001_159","B23001_166","B23001_173"
-}
--- Male "in labor force" rows: 004, 011, 018, 025, 032, 039, 046, 053, 060, 067, 074, 081
-VAR _maleLF = {
-    "B23001_004","B23001_011","B23001_018","B23001_025","B23001_032",
-    "B23001_039","B23001_046","B23001_053","B23001_060","B23001_067",
-    "B23001_074","B23001_081"
-}
-
-RETURN
-SWITCH(
-    TRUE(),
-
-    -- Labor Force Participation ------------------------------------------------
-    _type = "Labor Force Participation" && _label = "Women",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] IN _femLF),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B23001_087")
-        ),
-
-    _type = "Labor Force Participation" && _label = "Men",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] IN _maleLF),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B23001_002")
-        ),
-
-    -- Median Annual Earnings ---------------------------------------------------
-    -- B20017: Median earnings for full-time year-round workers 16+
-    -- _003 = Male, _006 = Female
-    _type = "Median Annual Earnings" && _label = "Women",
-        CALCULATE(SUM(fact_acs_wi_county[estimate]),
-            fact_acs_wi_county[var_base] = "B20017_006"),
-
-    _type = "Median Annual Earnings" && _label = "Men",
-        CALCULATE(SUM(fact_acs_wi_county[estimate]),
-            fact_acs_wi_county[var_base] = "B20017_003"),
-
-    -- Women's Earnings by Race -------------------------------------------------
-    -- B20017A-I: race-specific median earnings; _006 = female full-time year-round
-    -- A=White, B=Black/AA, C=AIAN, D=Asian, I=Hispanic/Latino
-    _type = "Women's Earnings by Race" && _label = "White",
-        CALCULATE(SUM(fact_acs_wi_county[estimate]),
-            fact_acs_wi_county[var_base] = "B20017A_006"),
-
-    _type = "Women's Earnings by Race" && _label = "Black or African American",
-        CALCULATE(SUM(fact_acs_wi_county[estimate]),
-            fact_acs_wi_county[var_base] = "B20017B_006"),
-
-    _type = "Women's Earnings by Race" && _label = "American Indian or Alaska Native",
-        CALCULATE(SUM(fact_acs_wi_county[estimate]),
-            fact_acs_wi_county[var_base] = "B20017C_006"),
-
-    _type = "Women's Earnings by Race" && _label = "Asian",
-        CALCULATE(SUM(fact_acs_wi_county[estimate]),
-            fact_acs_wi_county[var_base] = "B20017D_006"),
-
-    _type = "Women's Earnings by Race" && _label = "Hispanic or Latino",
-        CALCULATE(SUM(fact_acs_wi_county[estimate]),
-            fact_acs_wi_county[var_base] = "B20017I_006"),
-
-    -- Women's Earnings by Education Level --------------------------------------
-    -- B20004: Median earnings by educational attainment, workers 25+
-    -- Rows 014-018 = Female breakdowns (002-006 = total, 008-012 = Male)
-    _type = "Women's Earnings by Education" && _label = "Less than High School",
-        CALCULATE(SUM(fact_acs_wi_county[estimate]),
-            fact_acs_wi_county[var_base] = "B20004_014"),
-
-    _type = "Women's Earnings by Education" && _label = "High School Graduate",
-        CALCULATE(SUM(fact_acs_wi_county[estimate]),
-            fact_acs_wi_county[var_base] = "B20004_015"),
-
-    _type = "Women's Earnings by Education" && _label = "Some College or Associate's",
-        CALCULATE(SUM(fact_acs_wi_county[estimate]),
-            fact_acs_wi_county[var_base] = "B20004_016"),
-
-    _type = "Women's Earnings by Education" && _label = "Bachelor's Degree",
-        CALCULATE(SUM(fact_acs_wi_county[estimate]),
-            fact_acs_wi_county[var_base] = "B20004_017"),
-
-    _type = "Women's Earnings by Education" && _label = "Graduate or Professional Degree",
-        CALCULATE(SUM(fact_acs_wi_county[estimate]),
-            fact_acs_wi_county[var_base] = "B20004_018"),
-
-    BLANK()
-)
-```
-
-### Visual config — Employment & Earnings page
-
-| Visual | Fields |
-|---|---|
-| Slicer | `dim_employment_category[category_type]`, single-select |
-| Bar/column chart — Axis | `dim_employment_category[category_label]`, sort by `SortLabel` |
-| Bar/column chart — Values | `Employment Selector[Selected Employment Breakdown]` |
-| County slicer | `dim_geography[County Name]` (already on page) |
-
----
-
-### var_base verification checklist
-
-Before publishing, run this DAX query in Power BI DAX Query View to confirm
-the var_base values exist in your fact table:
-
-```dax
-EVALUATE
-FILTER(
-    SELECTCOLUMNS(
-        SUMMARIZE(fact_acs_wi_county, fact_acs_wi_county[var_base]),
-        "var_base", fact_acs_wi_county[var_base]
+PHASE 2 — SNAP Measures
+Measure 1 of 5: SNAP Rate (All Households)
+SNAP Rate =
+DIVIDE(
+    CALCULATE(
+        SUM(fact_acs_wi_county[estimate]),
+        fact_acs_wi_county[var_base] = "B22002_002"
     ),
-    [var_base] IN {
-        "B23001_002","B23001_087",
-        "B23001_089","B23001_096","B23001_103","B23001_110","B23001_117",
-        "B23001_124","B23001_131","B23001_138","B23001_145","B23001_152",
-        "B23001_159","B23001_166","B23001_173",
-        "B23001_004","B23001_011","B23001_018","B23001_025","B23001_032",
-        "B23001_039","B23001_046","B23001_053","B23001_060","B23001_067",
-        "B23001_074","B23001_081",
-        "B20017_003","B20017_006",
-        "B20017A_006","B20017B_006","B20017C_006","B20017D_006","B20017I_006",
-        "B20004_014","B20004_015","B20004_016","B20004_017","B20004_018"
-    }
-)
-ORDER BY [var_base]
-```
-
-All 40 var_base values should appear in the result. Any missing ones mean
-the Census API returned them under a different code — check `dim_variable_raw_2024.csv`
-in the outputs folder.
-
----
----
-
-## 3. Economic Security
-
-### `dim_economic_category`
-
-```dax
-dim_economic_category =
-DATATABLE(
-    "category_type",  STRING,
-    "category_label", STRING,
-    "SortType",       INTEGER,
-    "SortLabel",      INTEGER,
-    {
-        -- Poverty Rate (B17001)
-        { "Poverty Rate",          "Overall",   1, 1 },
-        { "Poverty Rate",          "Women",     1, 2 },
-        { "Poverty Rate",          "Men",       1, 3 },
-
-        -- Poverty Rate by Race (B17001A-I)
-        { "Poverty Rate by Race",  "White",                            2, 1 },
-        { "Poverty Rate by Race",  "Black or African American",        2, 2 },
-        { "Poverty Rate by Race",  "American Indian or Alaska Native", 2, 3 },
-        { "Poverty Rate by Race",  "Asian",                            2, 4 },
-        { "Poverty Rate by Race",  "Hispanic or Latino",               2, 5 },
-
-        -- Housing Tenure (B25003)
-        { "Housing Tenure",        "Owner-Occupied",                   3, 1 },
-        { "Housing Tenure",        "Renter-Occupied",                  3, 2 },
-
-        -- Rent Burden — share of renters paying each threshold (B25070)
-        { "Rent Burden",           "Less than 25% of Income",          4, 1 },
-        { "Rent Burden",           "25–29.9%",                         4, 2 },
-        { "Rent Burden",           "30–34.9%",                         4, 3 },
-        { "Rent Burden",           "35% or More",                      4, 4 },
-
-        -- SNAP / Food Stamps (B22010, B22002)
-        { "SNAP Recipiency",       "Any Household Receiving SNAP",     5, 1 },
-        { "SNAP Recipiency",       "Female-Headed Household",          5, 2 },
-        { "SNAP Recipiency",       "Male-Headed Household",            5, 3 }
-    }
-)
-```
-
----
-
-### `Economic Security Selector`
-
-```dax
-Economic Security Selector = ROW("_placeholder", 0)
-```
-
-Add this measure to `Economic Security Selector`:
-
-```dax
-Selected Economic Breakdown =
-VAR _type  = SELECTEDVALUE(dim_economic_category[category_type])
-VAR _label = SELECTEDVALUE(dim_economic_category[category_label])
-
-RETURN
-SWITCH(
-    TRUE(),
-
-    -- Poverty Rate (B17001) ----------------------------------------------------
-    -- _001 = total universe, _002 = total below poverty
-    -- _003 = Male below poverty (total), _017 = Female below poverty (total)
-    -- _032 = Male at or above poverty,   _046 = Female at or above poverty
-    _type = "Poverty Rate" && _label = "Overall",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B17001_002"),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B17001_001")
-        ),
-
-    _type = "Poverty Rate" && _label = "Women",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B17001_017"),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] IN { "B17001_017", "B17001_046" })
-        ),
-
-    _type = "Poverty Rate" && _label = "Men",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B17001_003"),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] IN { "B17001_003", "B17001_032" })
-        ),
-
-    -- Poverty Rate by Race (B17001A-I) -----------------------------------------
-    -- _002 = below poverty, _001 = total for that race group
-    _type = "Poverty Rate by Race" && _label = "White",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B17001A_002"),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B17001A_001")
-        ),
-
-    _type = "Poverty Rate by Race" && _label = "Black or African American",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B17001B_002"),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B17001B_001")
-        ),
-
-    _type = "Poverty Rate by Race" && _label = "American Indian or Alaska Native",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B17001C_002"),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B17001C_001")
-        ),
-
-    _type = "Poverty Rate by Race" && _label = "Asian",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B17001D_002"),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B17001D_001")
-        ),
-
-    _type = "Poverty Rate by Race" && _label = "Hispanic or Latino",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B17001I_002"),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B17001I_001")
-        ),
-
-    -- Housing Tenure (B25003) --------------------------------------------------
-    -- _001 = total occupied units, _002 = owner-occupied, _003 = renter-occupied
-    _type = "Housing Tenure" && _label = "Owner-Occupied",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B25003_002"),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B25003_001")
-        ),
-
-    _type = "Housing Tenure" && _label = "Renter-Occupied",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B25003_003"),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B25003_001")
-        ),
-
-    -- Rent Burden (B25070) -----------------------------------------------------
-    -- _001 = total renter-occupied units with cash rent (denominator)
-    -- _002 = <10%, _003 = 10-14.9%, _004 = 15-19.9%, _005 = 20-24.9%  → less than 25%
-    -- _006 = 25-29.9%
-    -- _007 = 30-34.9%
-    -- _008 = 35-39.9%, _009 = 40-49.9%, _010 = 50%+ → 35% or more
-    _type = "Rent Burden" && _label = "Less than 25% of Income",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] IN {
-                    "B25070_002","B25070_003","B25070_004","B25070_005"
-                }),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B25070_001")
-        ),
-
-    _type = "Rent Burden" && _label = "25–29.9%",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B25070_006"),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B25070_001")
-        ),
-
-    _type = "Rent Burden" && _label = "30–34.9%",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B25070_007"),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B25070_001")
-        ),
-
-    _type = "Rent Burden" && _label = "35% or More",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] IN {
-                    "B25070_008","B25070_009","B25070_010"
-                }),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B25070_001")
-        ),
-
-    -- SNAP Recipiency (B22010, B22002) -----------------------------------------
-    -- B22010_001 = total households, B22010_002 = HH receiving SNAP
-    -- B22002: female-headed no-spouse HH: _006 = receiving SNAP, _007 = not receiving
-    --         male-headed no-spouse HH:   _012 = receiving SNAP, _013 = not receiving
-    _type = "SNAP Recipiency" && _label = "Any Household Receiving SNAP",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B22010_002"),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B22010_001")
-        ),
-
-    _type = "SNAP Recipiency" && _label = "Female-Headed Household",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B22002_006"),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] IN { "B22002_006", "B22002_007" })
-        ),
-
-    _type = "SNAP Recipiency" && _label = "Male-Headed Household",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B22002_012"),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] IN { "B22002_012", "B22002_013" })
-        ),
-
-    BLANK()
-)
-```
-
-### Visual config — Economic Security page
-
-| Visual | Fields |
-|---|---|
-| Slicer | `dim_economic_category[category_type]`, single-select |
-| Bar/column chart — Axis | `dim_economic_category[category_label]`, sort by `SortLabel` |
-| Bar/column chart — Values | `Economic Security Selector[Selected Economic Breakdown]` |
-| County slicer | `dim_geography[County Name]` (already on page) |
-
----
-
-### var_base verification checklist
-
-```dax
-EVALUATE
-FILTER(
-    SELECTCOLUMNS(
-        SUMMARIZE(fact_acs_wi_county, fact_acs_wi_county[var_base]),
-        "var_base", fact_acs_wi_county[var_base]
+    CALCULATE(
+        SUM(fact_acs_wi_county[estimate]),
+        fact_acs_wi_county[var_base] = "B22002_001"
     ),
-    [var_base] IN {
-        "B17001_001","B17001_002","B17001_003","B17001_017","B17001_032","B17001_046",
-        "B17001A_001","B17001A_002",
-        "B17001B_001","B17001B_002",
-        "B17001C_001","B17001C_002",
-        "B17001D_001","B17001D_002",
-        "B17001I_001","B17001I_002",
-        "B25003_001","B25003_002","B25003_003",
-        "B25070_001","B25070_002","B25070_003","B25070_004","B25070_005",
-        "B25070_006","B25070_007","B25070_008","B25070_009","B25070_010",
-        "B22010_001","B22010_002",
-        "B22002_006","B22002_007","B22002_012","B22002_013"
-    }
+    0
 )
-ORDER BY [var_base]
-```
+Format: Percentage, 1 decimal place.
 
----
----
-
-## 4. Race & Equity
-
-### `dim_race_category`
-
-```dax
-dim_race_category =
-DATATABLE(
-    "category_type",  STRING,
-    "category_label", STRING,
-    "SortType",       INTEGER,
-    "SortLabel",      INTEGER,
-    {
-        -- Women's Poverty Rate by Race (B17001A-I)
-        { "Women's Poverty Rate",          "White",                            1, 1 },
-        { "Women's Poverty Rate",          "Black or African American",        1, 2 },
-        { "Women's Poverty Rate",          "American Indian or Alaska Native", 1, 3 },
-        { "Women's Poverty Rate",          "Asian",                            1, 4 },
-        { "Women's Poverty Rate",          "Hispanic or Latino",               1, 5 },
-
-        -- Women's Median Earnings by Race (B20017A-I)
-        { "Women's Median Earnings",       "White",                            2, 1 },
-        { "Women's Median Earnings",       "Black or African American",        2, 2 },
-        { "Women's Median Earnings",       "American Indian or Alaska Native", 2, 3 },
-        { "Women's Median Earnings",       "Asian",                            2, 4 },
-        { "Women's Median Earnings",       "Hispanic or Latino",               2, 5 },
-
-        -- Women's Labor Force Participation by Race (C23002A-I)
-        { "Women's Labor Force Participation", "White",                            3, 1 },
-        { "Women's Labor Force Participation", "Black or African American",        3, 2 },
-        { "Women's Labor Force Participation", "American Indian or Alaska Native", 3, 3 },
-        { "Women's Labor Force Participation", "Asian",                            3, 4 },
-        { "Women's Labor Force Participation", "Hispanic or Latino",               3, 5 },
-
-        -- Female Population Share by Race (B01001A-I)
-        { "Female Population by Race",     "White",                            4, 1 },
-        { "Female Population by Race",     "Black or African American",        4, 2 },
-        { "Female Population by Race",     "American Indian or Alaska Native", 4, 3 },
-        { "Female Population by Race",     "Asian",                            4, 4 },
-        { "Female Population by Race",     "Hispanic or Latino",               4, 5 }
-    }
+Measure 2 of 5: SNAP Count (All Households)
+SNAP Count =
+CALCULATE(
+    SUM(fact_acs_wi_county[estimate]),
+    fact_acs_wi_county[var_base] = "B22002_002"
 )
-```
+Format: Whole number, comma separated (in Power BI: choose Whole Number format, turn on thousands separator).
 
----
-
-### `Race Equity Selector`
-
-```dax
-Race Equity Selector = ROW("_placeholder", 0)
-```
-
-Add this measure to `Race Equity Selector`:
-
-```dax
-Selected Race Equity Breakdown =
-VAR _type  = SELECTEDVALUE(dim_race_category[category_type])
-VAR _label = SELECTEDVALUE(dim_race_category[category_label])
-
--- C23002A-I: Sex by Age by Employment Status (civilian, 20-64 years) by race
--- Each race table (A-I) has 30 rows. Female "in labor force" rows:
--- In C23002X, the female section starts around row 016.
--- _017 = Female 20-64 total, _018 = Female in labor force (verify row numbers below)
--- Row pattern confirmed by checking dim_variable_raw_2024.csv in outputs/
--- Placeholders — verify these with the verification query at bottom of section:
-VAR _femLF_white    = { "C23002A_018" }   -- Female in LF, White alone
-VAR _femTot_white   = { "C23002A_017" }   -- Female 20-64 total, White alone
-VAR _femLF_black    = { "C23002B_018" }
-VAR _femTot_black   = { "C23002B_017" }
-VAR _femLF_aian     = { "C23002C_018" }
-VAR _femTot_aian    = { "C23002C_017" }
-VAR _femLF_asian    = { "C23002D_018" }
-VAR _femTot_asian   = { "C23002D_017" }
-VAR _femLF_hisp     = { "C23002I_018" }
-VAR _femTot_hisp    = { "C23002I_017" }
-
-RETURN
-SWITCH(
-    TRUE(),
-
-    -- Women's Poverty Rate by Race ---------------------------------------------
-    -- B17001X_017 = female below poverty, B17001X_046 = female at or above poverty
-    _type = "Women's Poverty Rate" && _label = "White",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B17001A_017"),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] IN { "B17001A_017","B17001A_046" })
-        ),
-
-    _type = "Women's Poverty Rate" && _label = "Black or African American",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B17001B_017"),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] IN { "B17001B_017","B17001B_046" })
-        ),
-
-    _type = "Women's Poverty Rate" && _label = "American Indian or Alaska Native",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B17001C_017"),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] IN { "B17001C_017","B17001C_046" })
-        ),
-
-    _type = "Women's Poverty Rate" && _label = "Asian",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B17001D_017"),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] IN { "B17001D_017","B17001D_046" })
-        ),
-
-    _type = "Women's Poverty Rate" && _label = "Hispanic or Latino",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] = "B17001I_017"),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] IN { "B17001I_017","B17001I_046" })
-        ),
-
-    -- Women's Median Earnings by Race ------------------------------------------
-    -- B20017X_006 = female median earnings, full-time year-round workers
-    _type = "Women's Median Earnings" && _label = "White",
-        CALCULATE(SUM(fact_acs_wi_county[estimate]),
-            fact_acs_wi_county[var_base] = "B20017A_006"),
-
-    _type = "Women's Median Earnings" && _label = "Black or African American",
-        CALCULATE(SUM(fact_acs_wi_county[estimate]),
-            fact_acs_wi_county[var_base] = "B20017B_006"),
-
-    _type = "Women's Median Earnings" && _label = "American Indian or Alaska Native",
-        CALCULATE(SUM(fact_acs_wi_county[estimate]),
-            fact_acs_wi_county[var_base] = "B20017C_006"),
-
-    _type = "Women's Median Earnings" && _label = "Asian",
-        CALCULATE(SUM(fact_acs_wi_county[estimate]),
-            fact_acs_wi_county[var_base] = "B20017D_006"),
-
-    _type = "Women's Median Earnings" && _label = "Hispanic or Latino",
-        CALCULATE(SUM(fact_acs_wi_county[estimate]),
-            fact_acs_wi_county[var_base] = "B20017I_006"),
-
-    -- Women's Labor Force Participation by Race --------------------------------
-    -- C23002X: verify row numbers with query below before publishing
-    _type = "Women's Labor Force Participation" && _label = "White",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] IN _femLF_white),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] IN _femTot_white)
-        ),
-
-    _type = "Women's Labor Force Participation" && _label = "Black or African American",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] IN _femLF_black),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] IN _femTot_black)
-        ),
-
-    _type = "Women's Labor Force Participation" && _label = "American Indian or Alaska Native",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] IN _femLF_aian),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] IN _femTot_aian)
-        ),
-
-    _type = "Women's Labor Force Participation" && _label = "Asian",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] IN _femLF_asian),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] IN _femTot_asian)
-        ),
-
-    _type = "Women's Labor Force Participation" && _label = "Hispanic or Latino",
-        DIVIDE(
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] IN _femLF_hisp),
-            CALCULATE(SUM(fact_acs_wi_county[estimate]),
-                fact_acs_wi_county[var_base] IN _femTot_hisp)
-        ),
-
-    -- Female Population by Race ------------------------------------------------
-    -- B01001X_026 = total female population for each race group
-    -- (race tables use row 026 for female total, same as main B01001)
-    _type = "Female Population by Race" && _label = "White",
-        CALCULATE(SUM(fact_acs_wi_county[estimate]),
-            fact_acs_wi_county[var_base] = "B01001A_026"),
-
-    _type = "Female Population by Race" && _label = "Black or African American",
-        CALCULATE(SUM(fact_acs_wi_county[estimate]),
-            fact_acs_wi_county[var_base] = "B01001B_026"),
-
-    _type = "Female Population by Race" && _label = "American Indian or Alaska Native",
-        CALCULATE(SUM(fact_acs_wi_county[estimate]),
-            fact_acs_wi_county[var_base] = "B01001C_026"),
-
-    _type = "Female Population by Race" && _label = "Asian",
-        CALCULATE(SUM(fact_acs_wi_county[estimate]),
-            fact_acs_wi_county[var_base] = "B01001D_026"),
-
-    _type = "Female Population by Race" && _label = "Hispanic or Latino",
-        CALCULATE(SUM(fact_acs_wi_county[estimate]),
-            fact_acs_wi_county[var_base] = "B01001I_026"),
-
-    BLANK()
+Measure 3 of 5: Female Head of Household SNAP Count
+This sums _006 (female HoH, with children, SNAP) and _012 (female HoH, no children, SNAP):
+Female HoH SNAP Count =
+CALCULATE(
+    SUM(fact_acs_wi_county[estimate]),
+    fact_acs_wi_county[var_base] IN {"B22002_006", "B22002_012"}
 )
-```
+Format: Whole number, comma separated.
 
-### Visual config — Race & Equity page
-
-| Visual | Fields |
-|---|---|
-| Slicer | `dim_race_category[category_type]`, single-select |
-| Bar/column chart — Axis | `dim_race_category[category_label]`, sort by `SortLabel` |
-| Bar/column chart — Values | `Race Equity Selector[Selected Race Equity Breakdown]` |
-| County slicer | `dim_geography[County Name]` (already on page) |
-
----
-
-### C23002 row verification — REQUIRED before publishing
-
-The `C23002A-I` tables have 30 rows each. The female section and the exact
-"in labor force" row numbers depend on the ACS table layout. **Run this query
-first** to see what each row label is:
-
-```dax
-EVALUATE
-FILTER(
-    SELECTCOLUMNS(
-        fact_acs_wi_county,
-        "var_base", fact_acs_wi_county[var_base],
-        "label",    fact_acs_wi_county[label]
+Measure 4 of 5: Female Head of Household SNAP Rate
+Denominator is all female HoH households (SNAP + non-SNAP, with and without children):
+Female HoH SNAP Rate =
+DIVIDE(
+    CALCULATE(
+        SUM(fact_acs_wi_county[estimate]),
+        fact_acs_wi_county[var_base] IN {"B22002_006", "B22002_012"}
     ),
-    LEFT([var_base], 7) = "C23002A"
+    CALCULATE(
+        SUM(fact_acs_wi_county[estimate]),
+        fact_acs_wi_county[var_base] IN {
+            "B22002_006", "B22002_012",
+            "B22002_019", "B22002_025"
+        }
+    ),
+    0
 )
-ORDER BY [var_base]
-```
+Format: Percentage, 1 decimal place.
 
-Find the rows whose `label` contains "Female" AND "In labor force" — those are
-your `_femLF_white` var_base values. Find "Female" AND the total row (no "In
-labor force" qualifier) — that is `_femTot_white`. Replace the placeholders in
-the measure above. Then repeat for B, C, D, I suffixes.
+Measure 5 of 5: Female HoH SNAP with Children Count
+This isolates just households with children under 18:
+Female HoH SNAP With Children =
+CALCULATE(
+    SUM(fact_acs_wi_county[estimate]),
+    fact_acs_wi_county[var_base] = "B22002_006"
+)
+Format: Whole number, comma separated.
 
----
----
+PHASE 3 — Homeownership & Housing Measures
+Measure 1 of 5: Homeownership Rate
+Homeownership Rate =
+DIVIDE(
+    CALCULATE(
+        SUM(fact_acs_wi_county[estimate]),
+        fact_acs_wi_county[var_base] = "B25003_002"
+    ),
+    CALCULATE(
+        SUM(fact_acs_wi_county[estimate]),
+        fact_acs_wi_county[var_base] = "B25003_001"
+    ),
+    0
+)
+Format: Percentage, 1 decimal place.
 
-## 5. Table Creation Checklist
+Measure 2 of 5: Renter Rate
+Renter Rate =
+DIVIDE(
+    CALCULATE(
+        SUM(fact_acs_wi_county[estimate]),
+        fact_acs_wi_county[var_base] = "B25003_003"
+    ),
+    CALCULATE(
+        SUM(fact_acs_wi_county[estimate]),
+        fact_acs_wi_county[var_base] = "B25003_001"
+    ),
+    0
+)
+Format: Percentage, 1 decimal place.
 
-Create all tables via **Modeling → New Table** in this order.
-No relationships needed — all filtering is done inside the measures.
+Measure 3 of 5: Median Gross Rent
+Median Gross Rent =
+CALCULATE(
+    AVERAGE(fact_acs_wi_county[estimate]),
+    fact_acs_wi_county[var_base] = "B25064_001"
+)
+Format: Currency, 0 decimal places ($ symbol, no cents needed).
 
-| Order | Table name | Section |
-|---|---|---|
-| 1 | `dim_employment_category` | §2 |
-| 2 | `Employment Selector` | §2 |
-| 3 | `dim_economic_category` | §3 |
-| 4 | `Economic Security Selector` | §3 |
-| 5 | `dim_race_category` | §4 |
-| 6 | `Race Equity Selector` | §4 |
+Measure 4 of 5: Cost-Burdened Renter Rate (30%+ of income on rent)
+Rows _007 through _010 are the 30%+ burden brackets. _001 is the total renter universe for this table.
+Cost Burdened Renter Rate =
+DIVIDE(
+    CALCULATE(
+        SUM(fact_acs_wi_county[estimate]),
+        fact_acs_wi_county[var_base] IN {
+            "B25070_007", "B25070_008",
+            "B25070_009", "B25070_010"
+        }
+    ),
+    CALCULATE(
+        SUM(fact_acs_wi_county[estimate]),
+        fact_acs_wi_county[var_base] = "B25070_001"
+    ),
+    0
+)
+Format: Percentage, 1 decimal place.
 
-**After creating each `dim_*_category` table**, set sort columns via
-Column Tools → Sort by Column:
-- `category_label` → sorted by `SortLabel`
-- `category_type` → sorted by `SortType`
-
-**After creating each `* Selector` table**, add the measure from that section
-to it directly (right-click the table in the Fields pane → New Measure).
-
-Run all three var_base verification queries before building visuals.
-Any var_base that comes back missing needs to be corrected in the measure.
+Measure 5 of 5: Severely Cost-Burdened Renter Rate (50%+ of income on rent)
+Severely Cost Burdened Renter Rate =
+DIVIDE(
+    CALCULATE(
+        SUM(fact_acs_wi_county[estimate]),
+        fact_acs_wi_county[var_base] = "B25070_010"
+    ),
+    CALCULATE(
+        SUM(fact_acs_wi_county[estimate]),
+        fact_acs_wi_county[var_base] = "B25070_001"
+    ),
+    0
+)
