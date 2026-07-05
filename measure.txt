@@ -1,186 +1,200 @@
 // ============================================================
-// WISWOM — Wisconsin Women's Council Status of Women Dashboard
-// Project Overview
+// WISWOM — DAX MEASURES: OCCUPATION WORKER COUNTS
+// Source: ACS 2024 5-Year Estimates — C24010
 // Last updated: 2026-07-05
 // ============================================================
-
+//
+// TABLE: C24010 — Sex by Occupation for the Civilian
+//        Employed Population 16 Years and Over
+//
+// DATA STATUS:
+//   occupation_pull.py ran successfully 2026-07-05
+//   154 new dim_occupation rows added
+//   11,808 new fact2_acs_wi_county rows added
+//   Spot-checked against live API — Milwaukee County (079)
+//   Male 226,589 + Female 226,564 = 453,153 (matches C24010_001)
+//
+// RELATIONSHIP SETUP:
+//   A direct relationship between fact2_acs_wi_county[var_base]
+//   and dim_occupation[var_base] must exist but be set INACTIVE
+//   in Power BI Desktop → Model view → Manage Relationships.
+//
+//   If active, it causes an ambiguous path error because Power BI
+//   sees two routes from dim_geography to dim_occupation:
+//     Path 1: fact2 → dim_demographic → dim_occupation
+//     Path 2: fact2 → dim_occupation (direct)
+//
+//   Solution: add the relationship, leave it INACTIVE, and use
+//   USERELATIONSHIP() in every C24010 measure below to activate
+//   it only when needed. The existing S2411/S2412 earnings measures
+//   are unaffected — they still route through dim_demographic.
+//
+// KEY COLUMN: dim_occupation[occupation_nesting]
+//   "top"    = 5 major occupation categories (use for all charts)
+//   "branch" = sub-categories (not yet pulled)
+//   "leaf"   = detail occupations (not yet pulled)
+//   Always filter to "top" to avoid double-counting parent + child
+//   rows when occupation_label is on a visual axis.
+//
+// RACE SUPPORT:
+//   117 race-iterated rows are in dim_occupation[race].
+//   The by-race measures are identical to the sex-only versions —
+//   race breakdown comes from putting dim_occupation[race] on a
+//   visual axis or legend, NOT from a hardcoded race filter in DAX.
 // ============================================================
-// PROJECT SUMMARY
-// ============================================================
-
-Dashboard built for Power BI Service (web version only).
-Visualizes Wisconsin county-level data for a general public audience.
-Core lens across every page: female vs. male comparison.
-
-Client: Wisconsin Women's Council
-
-
-// ============================================================
-// PAGES
-// ============================================================
-
-HOME
-  Purpose: Navigation and dashboard overview
-  Content: Statewide highlight stats introducing the project
-  Status: In progress
-
-DEMOGRAPHICS
-  Purpose: Who Wisconsin women are
-  Content: Population, age distribution, race/ethnicity,
-           education attainment, marital status
-  Comparison: Female vs. male across all indicators
-  Data: ACS B01001, B15002, B12001, B13002, B01001A-I
-  Status: Measures written — visuals in progress
-
-ECONOMIC SECURITY
-  Purpose: Financial stability and hardship
-  Content: Poverty rates, SNAP participation,
-           housing cost burden
-  Comparison: Female vs. male where ACS supports it
-  Notes: SNAP has sex split for single householders only (B22002)
-         Rent burden (B25070) is household-level only — no sex split
-  Data: ACS B17001, B17001A-I, B22002, B25070
-  Status: Measures written — visuals in progress
-
-EARNINGS
-  Purpose: What Wisconsin women earn
-  Content: Median earnings by occupation, industry, education,
-           race; labor force participation; occupation worker counts
-  Comparison: Female vs. male
-  Data: ACS B20017, B20017A-I, B20004, S2411, S2412, B23001, C24010
-  Notes: Sentinel value -666,666,667 filtered via estimate > 0
-         C24010 measures require USERELATIONSHIP — see measures file
-  Status: Measures written — visuals in progress
-
-HEALTH
-  Purpose: Health outcomes and maternity
-  Content: Birth rates, maternal health indicators
-  Comparison: Female vs. male where applicable
-  Data: Wisconsin WISH birth records (fact_wish_births_county)
-  Status: COMING SOON — data not yet loaded
-
-VIOLENCE & SAFETY
-  Purpose: Safety and crime exposure
-  Content: Victim and offender patterns by offense type
-  Comparison: Female vs. male
-  Data: NIBRS crime data (fact_crime_agg)
-  Status: COMING SOON — data not yet loaded
-
-GEOGRAPHY
-  Purpose: County-level map view
-  Content: Any indicator from any topic as a choropleth
-  Layout: Female map and male map side by side
-  Status: In progress — experimenting with filled map visual
 
 
 // ============================================================
-// DATA TABLES
+// SECTION 1 — CORE WORKER COUNTS
 // ============================================================
 
-fact2_acs_wi_county
-  Rows: ~62,424 (+ 11,808 C24010 rows added 2026-07-05)
-  Columns: geoid, county, year, var_base, estimate
-  Note: Sentinel value -666,666,667 used by ACS for suppressed
-        medians — filter estimate > 0 in all earnings measures
+[Occupation Worker Count Female] =
+CALCULATE(
+    SUM(fact2_acs_wi_county[estimate]),
+    USERELATIONSHIP(fact2_acs_wi_county[var_base], dim_occupation[var_base]),
+    dim_occupation[table] = "C24010",
+    dim_occupation[sex] = "Female",
+    dim_occupation[occupation_nesting] = "top"
+)
 
-dim_demographic
-  Rows: 867
-  Columns: var_base, topic, sex, race, age_group, marital_status,
-           education_level, is_denominator, description
-  Notes:
-    - B20017 sex encoded in var_base (_003=male, _006=female)
-      sex column = "Total" — fixed in build_dims.py
-    - B22002 householder sex fixed in build_dims.py
-    - Topic names normalized:
-        "Education Level" → "Demographics / Education Level"
-        "Marital Status"  → "Demographics / Marital Status"
-        "Sex by Work Experience..." → "Earnings / Work Experience"
+[Occupation Worker Count Male] =
+CALCULATE(
+    SUM(fact2_acs_wi_county[estimate]),
+    USERELATIONSHIP(fact2_acs_wi_county[var_base], dim_occupation[var_base]),
+    dim_occupation[table] = "C24010",
+    dim_occupation[sex] = "Male",
+    dim_occupation[occupation_nesting] = "top"
+)
 
-dim_occupation
-  Rows: 288 (S2411/S2412) + 154 (C24010 added 2026-07-05)
-  Columns: var_base, table, worker_type, sex, row_number,
-           occupation_label, occupation_level, is_median_earnings_row
-  C24010 additional columns: occupation_nesting, race
-  Notes:
-    - S2411 = all civilian workers
-    - S2412 = full-time year-round workers
-    - C24010 = occupation worker counts by sex and race
-    - occupation_nesting: "top" (5 major categories),
-      "branch"/"leaf" (not yet pulled)
+[Occupation Worker Count Total] =
+[Occupation Worker Count Male] + [Occupation Worker Count Female]
 
-dim_geography
-  Rows: 72 (one per Wisconsin county)
-  Columns: geoid, county, county_name, state
-
-fact_wish_births_county — FUTURE
-fact_crime_agg — FUTURE
+[Female Share of Occupation Workers] =
+DIVIDE(
+    [Occupation Worker Count Female],
+    [Occupation Worker Count Total]
+)
 
 
 // ============================================================
-// RELATIONSHIPS (Power BI Model)
+// SECTION 2 — GAP MEASURES
 // ============================================================
 
-fact2_acs_wi_county[geoid]    → dim_geography[geoid]       M:1  Active
-fact2_acs_wi_county[var_base] → dim_demographic[var_base]  M:1  Active
-dim_occupation[var_base]      → dim_demographic[var_base]  1:1  Active
-fact2_acs_wi_county[var_base] → dim_occupation[var_base]   M:1  INACTIVE
-  ↑ Inactive to avoid ambiguous path error. Activated via
-    USERELATIONSHIP() in C24010 measures only.
+[Occupation Worker Count Gap (F minus M)] =
+[Occupation Worker Count Female] - [Occupation Worker Count Male]
 
-
-// ============================================================
-// KEY DAX PATTERNS
-// ============================================================
-
-Statewide KPI (ignore county slicer):
-  CALCULATE([Measure], ALL(dim_geography))
-
-Sentinel value filter (earnings medians):
-  AVERAGEX(FILTER(fact2_acs_wi_county, fact2_acs_wi_county[estimate] > 0), ...)
-
-C24010 occupation counts (inactive relationship):
-  CALCULATE(..., USERELATIONSHIP(fact2_acs_wi_county[var_base], dim_occupation[var_base]), ...)
-
-Dynamic page title:
-  [Selected County] = IF(HASONEVALUE(dim_geography[county_name]),
-                         VALUES(dim_geography[county_name]),
-                         "All Wisconsin Counties")
+[Occupation Worker Count Gap Label] =
+VAR gap = [Occupation Worker Count Gap (F minus M)]
+RETURN
+IF(
+    gap > 0,
+    "There are " & FORMAT(ABS(gap), "#,##0") & " more women than men in this occupation category",
+    "There are " & FORMAT(ABS(gap), "#,##0") & " more men than women in this occupation category"
+)
 
 
 // ============================================================
-// MEASURES FILES
+// SECTION 3 — STATEWIDE KPI VERSIONS
+// Same ALL(dim_geography) pattern used across all WISWOM measures
 // ============================================================
 
-WISWOM_DAX_Measures.txt              — Economic Security + Earnings (original)
-WISWOM_DAX_Measures_Earnings.txt     — Earnings with sentinel filter
-WISWOM_DAX_Measures_Economic_Security.txt — Economic Security full set
-WISWOM_DAX_Measures_Demographics.txt — Demographics page
-WISWOM_DAX_Measures_Occupation_Workers.txt — C24010 worker counts
+[Occupation Worker Count Female — Statewide] =
+CALCULATE(
+    [Occupation Worker Count Female],
+    ALL(dim_geography)
+)
+
+[Occupation Worker Count Male — Statewide] =
+CALCULATE(
+    [Occupation Worker Count Male],
+    ALL(dim_geography)
+)
+
+[Occupation Worker Count Gap — Statewide] =
+[Occupation Worker Count Female — Statewide] -
+[Occupation Worker Count Male — Statewide]
+
+[Female Share of Occupation Workers — Statewide] =
+CALCULATE(
+    [Female Share of Occupation Workers],
+    ALL(dim_geography)
+)
 
 
 // ============================================================
-// POWER BI NOTES
+// SECTION 4 — BY RACE
+// Identical DAX to sex-only versions — race breakdown comes
+// from adding dim_occupation[race] to a visual axis or legend.
+// Do NOT hardcode a race filter here.
+// Supports 5 major categories only (occupation_nesting = "top")
 // ============================================================
 
-- Web version (Power BI Service) only — no Desktop features
-- Field parameters NOT available — use Bookmarks instead
-- NOT IN syntax not supported in web DAX — use FILTER with <> chains
-- Measures entered one at a time in web version
-- Bookmarks used for indicator switching on Geography page
-- County slicer (dim_geography[county_name]) drives all interactive visuals
-- Static KPI cards use ALL(dim_geography) and have slicer interaction disabled
-- Filled map: color saturation works but may require
-  dim_geography[state] in Location field for geocoding context
+[Occupation Worker Count Female by Race] =
+CALCULATE(
+    SUM(fact2_acs_wi_county[estimate]),
+    USERELATIONSHIP(fact2_acs_wi_county[var_base], dim_occupation[var_base]),
+    dim_occupation[table] = "C24010",
+    dim_occupation[sex] = "Female",
+    dim_occupation[occupation_nesting] = "top"
+)
+
+[Occupation Worker Count Male by Race] =
+CALCULATE(
+    SUM(fact2_acs_wi_county[estimate]),
+    USERELATIONSHIP(fact2_acs_wi_county[var_base], dim_occupation[var_base]),
+    dim_occupation[table] = "C24010",
+    dim_occupation[sex] = "Male",
+    dim_occupation[occupation_nesting] = "top"
+)
+
+[Female Share of Occupation Workers by Race] =
+DIVIDE(
+    [Occupation Worker Count Female by Race],
+    [Occupation Worker Count Female by Race] + [Occupation Worker Count Male by Race]
+)
+
 
 // ============================================================
-// BUILD STATUS (as of 2026-07-05)
+// VISUAL SETUP NOTES
 // ============================================================
-
-Measures:    Complete for Demographics, Economic Security, Earnings
-Visuals:     Economic Security — in progress
-             Earnings — bookmarks started (Overall, Education, Race sections built)
-             Geography — experimenting with filled map
-             Demographics — not yet started
-Data:        ACS 2024 5-year complete
-             C24010 occupation counts added 2026-07-05
-             WISH / NIBRS — not yet loaded
+//
+// MAIN CHART (sex only):
+//   Visual type: Clustered bar chart
+//   Y-axis: dim_occupation[occupation_label]
+//   X-axis: [Occupation Worker Count Female] + [Occupation Worker Count Male]
+//   No Legend field needed — two value fields act as their own series
+//   No additional visual filter needed — measures scope to
+//   table = "C24010" and occupation_nesting = "top" internally
+//   Sort by [Occupation Worker Count Female] descending
+//   Format X-axis as whole number (#,##0)
+//
+// BY-RACE CHART:
+//   Visual type: Clustered bar chart
+//   Y-axis: dim_occupation[occupation_label]
+//   Legend: dim_occupation[race]
+//   Values: [Occupation Worker Count Female by Race] +
+//           [Occupation Worker Count Male by Race]
+//   Note: 5 top-level categories only — race iterations do not
+//   go to branch/leaf level in current data pull
+//
+// FEMALE SHARE CHART:
+//   Visual type: Bar chart
+//   Y-axis: dim_occupation[occupation_label]
+//   X-axis: [Female Share of Occupation Workers]
+//   Add reference line at 0.5 (parity)
+//   Format X-axis as percentage
+//   Title: "Female Share of Workers by Occupation"
+//
+// STATEWIDE KPI CARDS:
+//   Add [Occupation Worker Count Female — Statewide] and
+//   [Occupation Worker Count Male — Statewide] to the static
+//   KPI strip at top of the Earnings page alongside existing
+//   Poverty / LFP / Earnings statewide cards
+//
+// SANITY CHECK:
+//   Filter to Milwaukee County (079) — should show:
+//   Female ≈ 226,564 | Male ≈ 226,589 | Total ≈ 453,153
+//   If blank: USERELATIONSHIP not wired correctly or the
+//   inactive relationship does not exist in the model yet
+//
+// ============================================================
