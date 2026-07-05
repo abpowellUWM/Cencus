@@ -1,0 +1,186 @@
+// ============================================================
+// WISWOM — Wisconsin Women's Council Status of Women Dashboard
+// Project Overview
+// Last updated: 2026-07-05
+// ============================================================
+
+// ============================================================
+// PROJECT SUMMARY
+// ============================================================
+
+Dashboard built for Power BI Service (web version only).
+Visualizes Wisconsin county-level data for a general public audience.
+Core lens across every page: female vs. male comparison.
+
+Client: Wisconsin Women's Council
+
+
+// ============================================================
+// PAGES
+// ============================================================
+
+HOME
+  Purpose: Navigation and dashboard overview
+  Content: Statewide highlight stats introducing the project
+  Status: In progress
+
+DEMOGRAPHICS
+  Purpose: Who Wisconsin women are
+  Content: Population, age distribution, race/ethnicity,
+           education attainment, marital status
+  Comparison: Female vs. male across all indicators
+  Data: ACS B01001, B15002, B12001, B13002, B01001A-I
+  Status: Measures written — visuals in progress
+
+ECONOMIC SECURITY
+  Purpose: Financial stability and hardship
+  Content: Poverty rates, SNAP participation,
+           housing cost burden
+  Comparison: Female vs. male where ACS supports it
+  Notes: SNAP has sex split for single householders only (B22002)
+         Rent burden (B25070) is household-level only — no sex split
+  Data: ACS B17001, B17001A-I, B22002, B25070
+  Status: Measures written — visuals in progress
+
+EARNINGS
+  Purpose: What Wisconsin women earn
+  Content: Median earnings by occupation, industry, education,
+           race; labor force participation; occupation worker counts
+  Comparison: Female vs. male
+  Data: ACS B20017, B20017A-I, B20004, S2411, S2412, B23001, C24010
+  Notes: Sentinel value -666,666,667 filtered via estimate > 0
+         C24010 measures require USERELATIONSHIP — see measures file
+  Status: Measures written — visuals in progress
+
+HEALTH
+  Purpose: Health outcomes and maternity
+  Content: Birth rates, maternal health indicators
+  Comparison: Female vs. male where applicable
+  Data: Wisconsin WISH birth records (fact_wish_births_county)
+  Status: COMING SOON — data not yet loaded
+
+VIOLENCE & SAFETY
+  Purpose: Safety and crime exposure
+  Content: Victim and offender patterns by offense type
+  Comparison: Female vs. male
+  Data: NIBRS crime data (fact_crime_agg)
+  Status: COMING SOON — data not yet loaded
+
+GEOGRAPHY
+  Purpose: County-level map view
+  Content: Any indicator from any topic as a choropleth
+  Layout: Female map and male map side by side
+  Status: In progress — experimenting with filled map visual
+
+
+// ============================================================
+// DATA TABLES
+// ============================================================
+
+fact2_acs_wi_county
+  Rows: ~62,424 (+ 11,808 C24010 rows added 2026-07-05)
+  Columns: geoid, county, year, var_base, estimate
+  Note: Sentinel value -666,666,667 used by ACS for suppressed
+        medians — filter estimate > 0 in all earnings measures
+
+dim_demographic
+  Rows: 867
+  Columns: var_base, topic, sex, race, age_group, marital_status,
+           education_level, is_denominator, description
+  Notes:
+    - B20017 sex encoded in var_base (_003=male, _006=female)
+      sex column = "Total" — fixed in build_dims.py
+    - B22002 householder sex fixed in build_dims.py
+    - Topic names normalized:
+        "Education Level" → "Demographics / Education Level"
+        "Marital Status"  → "Demographics / Marital Status"
+        "Sex by Work Experience..." → "Earnings / Work Experience"
+
+dim_occupation
+  Rows: 288 (S2411/S2412) + 154 (C24010 added 2026-07-05)
+  Columns: var_base, table, worker_type, sex, row_number,
+           occupation_label, occupation_level, is_median_earnings_row
+  C24010 additional columns: occupation_nesting, race
+  Notes:
+    - S2411 = all civilian workers
+    - S2412 = full-time year-round workers
+    - C24010 = occupation worker counts by sex and race
+    - occupation_nesting: "top" (5 major categories),
+      "branch"/"leaf" (not yet pulled)
+
+dim_geography
+  Rows: 72 (one per Wisconsin county)
+  Columns: geoid, county, county_name, state
+
+fact_wish_births_county — FUTURE
+fact_crime_agg — FUTURE
+
+
+// ============================================================
+// RELATIONSHIPS (Power BI Model)
+// ============================================================
+
+fact2_acs_wi_county[geoid]    → dim_geography[geoid]       M:1  Active
+fact2_acs_wi_county[var_base] → dim_demographic[var_base]  M:1  Active
+dim_occupation[var_base]      → dim_demographic[var_base]  1:1  Active
+fact2_acs_wi_county[var_base] → dim_occupation[var_base]   M:1  INACTIVE
+  ↑ Inactive to avoid ambiguous path error. Activated via
+    USERELATIONSHIP() in C24010 measures only.
+
+
+// ============================================================
+// KEY DAX PATTERNS
+// ============================================================
+
+Statewide KPI (ignore county slicer):
+  CALCULATE([Measure], ALL(dim_geography))
+
+Sentinel value filter (earnings medians):
+  AVERAGEX(FILTER(fact2_acs_wi_county, fact2_acs_wi_county[estimate] > 0), ...)
+
+C24010 occupation counts (inactive relationship):
+  CALCULATE(..., USERELATIONSHIP(fact2_acs_wi_county[var_base], dim_occupation[var_base]), ...)
+
+Dynamic page title:
+  [Selected County] = IF(HASONEVALUE(dim_geography[county_name]),
+                         VALUES(dim_geography[county_name]),
+                         "All Wisconsin Counties")
+
+
+// ============================================================
+// MEASURES FILES
+// ============================================================
+
+WISWOM_DAX_Measures.txt              — Economic Security + Earnings (original)
+WISWOM_DAX_Measures_Earnings.txt     — Earnings with sentinel filter
+WISWOM_DAX_Measures_Economic_Security.txt — Economic Security full set
+WISWOM_DAX_Measures_Demographics.txt — Demographics page
+WISWOM_DAX_Measures_Occupation_Workers.txt — C24010 worker counts
+
+
+// ============================================================
+// POWER BI NOTES
+// ============================================================
+
+- Web version (Power BI Service) only — no Desktop features
+- Field parameters NOT available — use Bookmarks instead
+- NOT IN syntax not supported in web DAX — use FILTER with <> chains
+- Measures entered one at a time in web version
+- Bookmarks used for indicator switching on Geography page
+- County slicer (dim_geography[county_name]) drives all interactive visuals
+- Static KPI cards use ALL(dim_geography) and have slicer interaction disabled
+- Filled map: color saturation works but may require
+  dim_geography[state] in Location field for geocoding context
+
+// ============================================================
+// BUILD STATUS (as of 2026-07-05)
+// ============================================================
+
+Measures:    Complete for Demographics, Economic Security, Earnings
+Visuals:     Economic Security — in progress
+             Earnings — bookmarks started (Overall, Education, Race sections built)
+             Geography — experimenting with filled map
+             Demographics — not yet started
+Data:        ACS 2024 5-year complete
+             C24010 occupation counts added 2026-07-05
+             WISH / NIBRS — not yet loaded
