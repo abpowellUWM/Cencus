@@ -14,20 +14,12 @@
 //   Spot-checked against live API — Milwaukee County (079)
 //   Male 226,589 + Female 226,564 = 453,153 (matches C24010_001)
 //
-// RELATIONSHIP SETUP:
-//   A direct relationship between fact2_acs_wi_county[var_base]
-//   and dim_occupation[var_base] must exist but be set INACTIVE
-//   in Power BI Desktop → Model view → Manage Relationships.
-//
-//   If active, it causes an ambiguous path error because Power BI
-//   sees two routes from dim_geography to dim_occupation:
-//     Path 1: fact2 → dim_demographic → dim_occupation
-//     Path 2: fact2 → dim_occupation (direct)
-//
-//   Solution: add the relationship, leave it INACTIVE, and use
-//   USERELATIONSHIP() in every C24010 measure below to activate
-//   it only when needed. The existing S2411/S2412 earnings measures
-//   are unaffected — they still route through dim_demographic.
+// RELATIONSHIP:
+//   fact2_acs_wi_county[var_base] → dim_occupation[var_base]
+//   Cardinality: Many to one
+//   Cross-filter: Single (dim_occupation → fact2)
+//   Status: ACTIVE
+//   No USERELATIONSHIP needed — standard CALCULATE filtering works.
 //
 // KEY COLUMN: dim_occupation[occupation_nesting]
 //   "top"    = 5 major occupation categories (use for all charts)
@@ -51,7 +43,6 @@
 [Occupation Worker Count Female] =
 CALCULATE(
     SUM(fact2_acs_wi_county[estimate]),
-    USERELATIONSHIP(fact2_acs_wi_county[var_base], dim_occupation[var_base]),
     dim_occupation[table] = "C24010",
     dim_occupation[sex] = "Female",
     dim_occupation[occupation_nesting] = "top"
@@ -60,7 +51,6 @@ CALCULATE(
 [Occupation Worker Count Male] =
 CALCULATE(
     SUM(fact2_acs_wi_county[estimate]),
-    USERELATIONSHIP(fact2_acs_wi_county[var_base], dim_occupation[var_base]),
     dim_occupation[table] = "C24010",
     dim_occupation[sex] = "Male",
     dim_occupation[occupation_nesting] = "top"
@@ -95,7 +85,6 @@ IF(
 
 // ============================================================
 // SECTION 3 — STATEWIDE KPI VERSIONS
-// Same ALL(dim_geography) pattern used across all WISWOM measures
 // ============================================================
 
 [Occupation Worker Count Female — Statewide] =
@@ -132,7 +121,6 @@ CALCULATE(
 [Occupation Worker Count Female by Race] =
 CALCULATE(
     SUM(fact2_acs_wi_county[estimate]),
-    USERELATIONSHIP(fact2_acs_wi_county[var_base], dim_occupation[var_base]),
     dim_occupation[table] = "C24010",
     dim_occupation[sex] = "Female",
     dim_occupation[occupation_nesting] = "top"
@@ -141,7 +129,6 @@ CALCULATE(
 [Occupation Worker Count Male by Race] =
 CALCULATE(
     SUM(fact2_acs_wi_county[estimate]),
-    USERELATIONSHIP(fact2_acs_wi_county[var_base], dim_occupation[var_base]),
     dim_occupation[table] = "C24010",
     dim_occupation[sex] = "Male",
     dim_occupation[occupation_nesting] = "top"
@@ -188,13 +175,11 @@ DIVIDE(
 // STATEWIDE KPI CARDS:
 //   Add [Occupation Worker Count Female — Statewide] and
 //   [Occupation Worker Count Male — Statewide] to the static
-//   KPI strip at top of the Earnings page alongside existing
-//   Poverty / LFP / Earnings statewide cards
+//   KPI strip at top of the Earnings page
 //
 // SANITY CHECK:
 //   Filter to Milwaukee County (079) — should show:
 //   Female ≈ 226,564 | Male ≈ 226,589 | Total ≈ 453,153
-//   If blank: USERELATIONSHIP not wired correctly or the
-//   inactive relationship does not exist in the model yet
+//   If blank: check relationship is active in Model view
 //
 // ============================================================
